@@ -79,3 +79,6 @@ desktop.ini
 *.pem
 secrets.json
 .env
+
+# 启动诊断日志（运行时产物）
+/startup.log

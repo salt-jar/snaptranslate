@@ -207,6 +207,41 @@ def main() -> int:
     pump(0.4)
     scroll = dlg.findChild(type(dlg).__mro__[0], "")  # 占位，避免未使用告警
 
+    # ---------------- 离线语言包窗口 ----------------
+    print("\n---- 离线语言包管理 ----")
+    try:
+        from app.offline_dialog import OfflinePackDialog
+
+        dlg2 = OfflinePackDialog(config, None)
+        dlg2.show()
+        pump(3.0)          # 等索引拉取（后台线程）
+        for _ in range(60):
+            pump(0.1)
+            if dlg2.table.rowCount() > 0:
+                break
+        print("  窗口尺寸：%dx%d   表格行数：%d"
+              % (dlg2.width(), dlg2.height(), dlg2.table.rowCount()))
+        print("  状态栏：%s" % dlg2.lbl_status.text()[:90])
+        probs = audit(dlg2, "离线语言包")
+        if probs:
+            for p in probs[:6]:
+                print(BAD + p)
+            failures += probs
+        else:
+            print(OK + "语言包窗口几何检查通过")
+        if dlg2.table.rowCount() == 0:
+            msg = "语言包列表为空（索引获取失败？）"
+            print(WARN + msg)
+        if args.shot_dir:
+            dlg2.grab().save(str(args.shot_dir / "offline_packs.png"))
+        dlg2.close()
+    except Exception as e:  # noqa: BLE001
+        import traceback
+
+        print(BAD + "离线语言包窗口检查失败：%s" % e)
+        print(traceback.format_exc()[-600:])
+        failures.append("离线语言包窗口：%s" % e)
+
     # ---------------- 汇总 ----------------
     print("\n" + "=" * 74)
     if failures:

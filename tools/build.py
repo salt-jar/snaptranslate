@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -28,11 +29,40 @@ paths.bootstrap_import_path()
 SPEC = ROOT / "shotranslate.spec"
 DIST = ROOT / "dist"
 BUILD = ROOT / "build"
+PRELOAD = ROOT / "tools" / "pyi_preload"
 
 
 def run(cmd, **kw) -> int:
     print("$ %s" % " ".join(str(c) for c in cmd))
     return subprocess.call([str(c) for c in cmd], cwd=str(ROOT), **kw)
+
+
+def build_env() -> dict:
+    """构造 PyInstaller 的运行环境。
+
+    **必须把 tools/pyi_preload 加进 PYTHONPATH**，否则打包会在分析阶段直接失败：
+
+        SubprocessDiedError: Child process died calling import_library()
+        with args=('sentencepiece',). Its exit code was 3221225477  (0xC0000005)
+
+    原因是 PyInstaller 用来做模块内省的隔离子进程是长期复用的：它在处理 PyQt5
+    相关 hook 时先加载了 Qt，之后再去 import sentencepiece 就会触发访问违例
+    （Qt 与 sentencepiece 原生库的冲突）。tools/pyi_preload/sitecustomize.py
+    会在每个 Python 进程启动时先导入 ctranslate2，实测
+    ``ctranslate2 -> Qt -> sentencepiece`` 是安全的，问题即被绕开。
+    """
+    env = dict(os.environ)
+    parts = [str(ROOT / "vendor"), str(PRELOAD)]
+    old = env.get("PYTHONPATH")
+    if old:
+        parts.append(old)
+    env["PYTHONPATH"] = os.pathsep.join(parts)
+    # PyInstaller 自己的临时目录也用工作区内的，避免落到受限位置
+    tmp = ROOT / ".buildtmp"
+    tmp.mkdir(parents=True, exist_ok=True)
+    env.setdefault("TEMP", str(tmp))
+    env.setdefault("TMP", str(tmp))
+    return env
 
 
 def dir_size(path: Path) -> str:
@@ -75,7 +105,8 @@ def main() -> int:
                 shutil.rmtree(d, ignore_errors=True)
 
     t0 = time.time()
-    code = run([sys.executable, "-m", "PyInstaller", str(SPEC), "--noconfirm"])
+    code = run([sys.executable, "-m", "PyInstaller", str(SPEC), "--noconfirm"],
+               env=build_env())
     if code != 0:
         print("  [!!] 打包失败，退出码 %d" % code)
         return code

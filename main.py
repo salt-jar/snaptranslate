@@ -28,9 +28,32 @@ BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+# ---- 面包屑日志：最早开始记录，用于排查"启动即崩、没有正常日志"的情况 ----
+if getattr(sys, "frozen", False):
+    _LOG_DIR = Path(sys.executable).resolve().parent
+else:
+    _LOG_DIR = BASE_DIR
+try:
+    from app import startup_log
+
+    startup_log.set_path(_LOG_DIR / "startup.log")
+    startup_log.reset()
+    startup_log.log("main.py 开始执行（frozen=%s）" % getattr(sys, "frozen", False))
+except Exception:
+    startup_log = None  # type: ignore[assignment]
+
+
+def _crumb(msg: str) -> None:
+    if startup_log is not None:
+        startup_log.log(msg)
+
+
 from app import paths  # noqa: E402
 
+_crumb("已导入 app.paths")
+
 paths.bootstrap_import_path()
+_crumb("vendor 已加入 sys.path（%s）" % paths.vendor_dir())
 
 # ---- 关键：先于 Qt 导入原生扩展 ----------------------------------------------
 from app.ocr import warmup  # noqa: E402
@@ -39,9 +62,14 @@ warmup()
 
 from app.screen import enable_dpi_awareness  # noqa: E402
 
+_crumb("开始 enable_dpi_awareness")
 enable_dpi_awareness()
+_crumb("DPI 感知已设置")
 
 from PyQt5.QtCore import QCoreApplication, Qt, QTimer  # noqa: E402
+
+_crumb("已导入 QtCore")
+
 from PyQt5.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
 QCoreApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
@@ -135,7 +163,9 @@ def main(argv=None) -> int:
     from app.config import config
     from app.tray import app_icon
 
+    _crumb("已导入 app.config / app.tray")
     app.setWindowIcon(app_icon())
+    _crumb("图标已设置")
 
     # 依赖缺失时给出人话提示，而不是一堆 traceback
     try:
@@ -153,7 +183,9 @@ def main(argv=None) -> int:
     from app.app_context import AppContext
     from app.single_instance import SingleInstance
 
+    _crumb("已导入 AppContext")
     ctx = AppContext(app, config)
+    _crumb("AppContext 构建完成")
     ctx.apply_theme()
     # 注意要持有引用：SingleInstance 是 QObject，父对象设为 ctx 保证生命周期
     ctx.instance = SingleInstance(lambda cmd: dispatch_external(ctx, cmd), ctx)
