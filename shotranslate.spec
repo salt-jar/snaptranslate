@@ -16,7 +16,11 @@
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import (
+    collect_data_files,
+    collect_dynamic_libs,
+    collect_submodules,
+)
 
 ROOT = Path(SPECPATH).resolve()
 
@@ -24,6 +28,8 @@ ROOT = Path(SPECPATH).resolve()
 # 否则下面的 collect_data_files() 会报
 # "skipping data collection for module ... as it is not a package"。
 sys.path.insert(0, str(ROOT / "vendor"))
+
+binaries = []
 
 datas = [
     (str(ROOT / "resources" / "icon.ico"), "resources"),
@@ -46,6 +52,19 @@ for pkg in ("rapidocr_onnxruntime",):
     except Exception:
         pass
 
+# ---- 离线翻译引擎 ----
+# ctranslate2 带一个 56MB 的 ctranslate2.dll 和 libiomp5md.dll，是运行时动态加载的，
+# 必须显式收集；sentencepiece 有 package_data/*.bin 归一化表，缺了会在首次翻译时报错。
+for pkg in ("ctranslate2", "sentencepiece"):
+    try:
+        datas += collect_data_files(pkg)
+    except Exception:
+        pass
+    try:
+        binaries += collect_dynamic_libs(pkg)
+    except Exception:
+        pass
+
 hiddenimports = [
     "rapidocr_onnxruntime",
     "onnxruntime",
@@ -57,6 +76,8 @@ hiddenimports = [
     "pynput",
     "pynput.keyboard._win32",
     "pynput.mouse._win32",
+    "ctranslate2",
+    "sentencepiece",
     "PyQt5.QtNetwork",
     "PyQt5.QtTextToSpeech",
 ]
@@ -87,7 +108,7 @@ a = Analysis(
     # PyInstaller 不知道 main.py 运行时会往 sys.path 里插它，
     # 少了这一条 mss / pynput / rapidocr 全都找不到。
     pathex=[str(ROOT), str(ROOT / "vendor")],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

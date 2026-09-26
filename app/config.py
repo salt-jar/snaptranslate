@@ -52,6 +52,11 @@ DEFAULTS: Dict[str, Any] = {
         },
         "baidu": {"appid": "", "key": ""},
         "youdao_official": {"appkey": "", "secret": ""},
+        "local": {
+            "device": "cpu",          # cpu / cuda
+            "compute_type": "int8",   # int8 最快且内存占用小；auto / float32 亦可
+            "beam_size": 1,           # 1 最快，调大质量略好但明显变慢
+        },
         "custom": {
             "url": "",
             "method": "POST",

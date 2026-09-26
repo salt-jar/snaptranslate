@@ -86,7 +86,32 @@ python main.py                   :: 启动
 
 ## 三、翻译引擎
 
-### 免 Key，开箱即用
+### 完全离线：文本不出本机（隐私优先）
+
+| 引擎 | 语言覆盖 | 说明 |
+| --- | --- | --- |
+| **本地离线翻译** | 索引里 100 个语言包，其它语种经英语中转 | ✅ 用 OPUS-MT 模型在你的 CPU 上跑。**下载完语言包之后，全程不产生任何网络请求** |
+
+在「设置 → 翻译引擎」里把引擎选成 **本地离线翻译**，再点「管理离线语言包…」下载对应语言包。
+中英双向各约 70MB，下完之后翻译完全在本机完成。
+
+> **这个模式永远不会回退到在线引擎。** 本地模型出错就报错，绝不会偷偷把文本发到服务器。
+> 这是刻意设计的：用户选本地翻译通常就是为了隐私，静默兜底等于把这份保障悄悄取消了。
+
+也可以用命令行批量下载：
+
+```bat
+python tools\offline_pack.py --available            :: 列出可下载的语言包
+python tools\offline_pack.py --installed            :: 查看已安装
+python tools\offline_pack.py --download zh-en en-zh :: 中英双向
+```
+
+或者直接双击 **`下载离线语言包.bat`**。
+
+语言包索引走了多个镜像（优先 jsDelivr CDN），因为 `raw.githubusercontent.com`
+在部分地区很不稳定。
+
+### 免 Key，开箱即用（在线）
 
 | 引擎 | 语言覆盖 | 实测 |
 | --- | --- | --- |
@@ -168,6 +193,7 @@ snaptranslate/
 ├── 安装依赖.bat                     安装依赖到 vendor/
 ├── 创建桌面快捷方式.bat
 ├── 自检.bat                         环境体检
+├── 下载离线语言包.bat                下载离线翻译语言包
 ├── 打包exe.bat                      打包成免安装 exe
 ├── main.py                          程序入口
 ├── shotranslate.spec                PyInstaller 打包配置
@@ -180,6 +206,7 @@ snaptranslate/
 ├── config.json                      你的设置（首次运行自动生成，不进版本库）
 ├── snaptranslate.log                运行日志（排查问题看这里）
 ├── vendor/                          第三方依赖（由安装脚本生成，不进版本库）
+├── models/offline/                  离线翻译语言包（程序内下载）
 ├── resources/icon.ico               程序图标
 ├── app/
 │   ├── paths.py          路径、配置目录、开机自启
@@ -190,7 +217,9 @@ snaptranslate/
 │   ├── overlay.py        全屏框选遮罩（放大镜、把手、微调）
 │   ├── hotkeys.py        全局快捷键（Win32 热键 + 键盘钩子兜底）
 │   ├── ocr/              识别引擎：base / rapid / winocr / tesseract / preprocess
-│   ├── translate/        翻译引擎：base / free / llm / official / custom
+│   ├── translate/        翻译引擎：base / free / local / llm / official / custom
+│   ├── offline.py        离线语言包索引、下载与安装
+│   ├── offline_dialog.py 离线语言包管理界面
 │   ├── pipeline.py       「识别 → 翻译」后台线程流水线
 │   ├── result_window.py  结果悬浮窗
 │   ├── settings_window.py 设置窗口
@@ -205,7 +234,8 @@ snaptranslate/
     ├── make_shortcut.py  命令行创建快捷方式
     ├── build.py          打包脚本
     ├── make_icon.py      生成图标
-    ├── selftest.py       环境 / OCR / 翻译自检
+    ├── offline_pack.py   离线语言包命令行工具
+    ├── selftest.py       环境 / OCR / 翻译 / 离线自检
     ├── gui_test.py       端到端冒烟测试
     ├── overlay_test.py   坐标换算与框选交互测试
     └── ui_check.py       界面几何自检
@@ -260,6 +290,21 @@ snaptranslate/
    少了这两条，`collect_data_files('rapidocr_onnxruntime')` 会**静默失败**
    （只打一行 `WARNING: ... is not a package`），15.4MB 的 ONNX 模型全都不进包。
    结果是：exe 能正常启动、托盘图标正常、日志正常，一按快捷键却提示「没有可用的 OCR 引擎」。
+
+7. **sentencepiece 与 CTranslate2 打不开含中文的路径。**
+   它们的 C++ 文件 API 用的是窄字符，模型放在含中文的目录下会直接报
+   `NOT_FOUND: "D:\...\翻译软件\models\...\sentencepiece.model": No such file or directory`
+   ——文件明明存在，Python 也读得到，但 C++ 层打不开。
+   规避办法：路径不是纯 ASCII 时，临时 `os.chdir()` 到模型目录、只用相对文件名
+   （`model`、`sentencepiece.model`）加载。两个库都是在构造时把模型读进内存，
+   所以切换工作目录的窗口很短；但 `os.chdir` 是进程级的，必须加锁。
+
+8. **离线翻译不用 argostranslate。**
+   argostranslate 除了要拉 spacy / stanza / minisbd 一大串依赖（约 150MB），
+   运行期还会联网下载句子切分模型——对「本地安全翻译」来说不可接受。
+   语言包本身就是「CTranslate2 模型目录 + sentencepiece 分词器」的 zip，
+   直接依赖 `ctranslate2` + `sentencepiece`（44MB）自己实现即可，
+   而且下载完语言包后**全程零网络请求**。
 
 ---
 
@@ -324,6 +369,9 @@ git push origin main --tags            :: 推送后 CI（若已启用）会自�
 ## 十一、已知限制
 
 - 仅支持 Windows（依赖 Win32 热键、GDI 抓屏、SAPI 朗读、WinRT OCR）。
+- 离线翻译的质量低于在线引擎——它用的是能在 CPU 上跑的紧凑型 OPUS-MT 模型。
+  在意隐私就选它，在意质量就选在线引擎或配置大模型 Key。
+- 离线语言包以英语为中心：其它语种之间需要经英语中转，会损失一点质量。
 - 多显示器**且各屏缩放比例不同**时，框选遮罩按主屏比例渲染，可能有轻微偏移；单屏或统一缩放不受影响。
 - 免费翻译接口有频率限制，量大时建议配置大模型 Key。
 - RapidOCR 中文模型会吞掉英文词间空格（见常见问题）。

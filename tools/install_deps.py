@@ -43,9 +43,14 @@ REQUIREMENTS = [
     ("pynput", None, False, "全局快捷键兜底（原生热键被占用时启用）"),
     ("opencv-python-headless", "4.10.0.84", True, "RapidOCR 图像处理（headless 版避免与 Qt 冲突）"),
     ("pyclipper", None, True, "RapidOCR 文本框裁剪"),
-    ("shapely", None, True, "RapidOCR 文本框几何运算"),
+    ("shapely", None, True, "RapidOCR 几何运算"),
     ("PyYAML", None, True, "RapidOCR 配置读取"),
     ("rapidocr-onnxruntime", None, True, "离线 OCR 引擎（中英日韩）"),
+    # ---- 离线翻译（可选）：只装推理引擎和分词器，语言包在程序里按需下载 ----
+    # 不用 argostranslate 那一整套（它还会拉 spacy / stanza / minisbd，
+    # 而且运行时会偷偷联网下载句子切分模型，那就不是真离线了）。
+    ("ctranslate2", None, False, "离线翻译推理引擎（CTranslate2，CPU 上很快）"),
+    ("sentencepiece", None, False, "离线翻译分词器（OPUS-MT 模型配套）"),
 ]
 
 # 已由系统 Python 提供、无需安装的大包
@@ -183,7 +188,8 @@ def check_importable() -> dict:
         sys.path.insert(0, str(VENDOR))
     result = {}
     for mod in ["mss", "pynput", "cv2", "pyclipper", "shapely", "yaml",
-                "rapidocr_onnxruntime", "onnxruntime", "numpy", "PIL"]:
+                "rapidocr_onnxruntime", "onnxruntime", "numpy", "PIL",
+                "ctranslate2", "sentencepiece"]:
         try:
             __import__(mod)
             result[mod] = True

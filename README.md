@@ -91,6 +91,31 @@ A **magnifier** follows the cursor, which makes it easy to line up on very small
 
 ## 3. Translation engines
 
+### Fully offline — nothing leaves your machine
+
+| Engine | Coverage | Notes |
+| --- | --- | --- |
+| **Local offline translation** | 100 language pairs (via English pivot) | ✅ Runs 100% on your CPU with the OPUS-MT models. **No network requests at all after the language packs are downloaded.** |
+
+Pick **Local offline translation** under *Settings → Translation engines*, then download
+language packs from *Manage offline packs* (or from the command line — see below).
+Chinese ⇄ English is about 70 MB per direction; after that, translation is entirely local.
+
+> **This mode never falls back to an online engine.** If the local model fails, you get an
+> error — your text is not silently sent to a server. That is deliberate: choosing local
+> translation is usually a privacy decision, and a silent fallback would quietly cancel it.
+
+Download packs from the command line too:
+
+```bat
+python tools\offline_pack.py --available           :: list what's downloadable
+python tools\offline_pack.py --installed           :: show what you have
+python tools\offline_pack.py --download zh-en en-zh :: Chinese <-> English
+```
+
+The download index is fetched through multiple mirrors (jsDelivr CDN first) because
+`raw.githubusercontent.com` is unreliable in some regions.
+
 ### No API key needed — works out of the box
 
 | Engine | Coverage | Status |
@@ -184,6 +209,7 @@ snaptranslate/
 ├── 安装依赖.bat                     Install deps into vendor/
 ├── 创建桌面快捷方式.bat              Create desktop shortcut
 ├── 自检.bat                         Environment self-test
+├── 下载离线语言包.bat                Download offline language packs
 ├── 打包exe.bat                      Build a standalone exe
 ├── main.py                          Entry point
 ├── shotranslate.spec                PyInstaller build spec
@@ -196,6 +222,7 @@ snaptranslate/
 ├── config.json                      Your settings (generated on first run, not committed)
 ├── snaptranslate.log                Runtime log
 ├── vendor/                          Third-party deps (generated, not committed)
+├── models/offline/                  Offline language packs (downloaded in-app)
 ├── resources/icon.ico               App icon
 ├── app/
 │   ├── paths.py          Paths, config dir, autostart
@@ -206,7 +233,9 @@ snaptranslate/
 │   ├── overlay.py        Fullscreen selection overlay (magnifier, handles, nudging)
 │   ├── hotkeys.py        Global hotkeys (Win32 RegisterHotKey + hook fallback)
 │   ├── ocr/              Engines: base / rapid / winocr / tesseract / preprocess
-│   ├── translate/        Engines: base / free / llm / official / custom
+│   ├── translate/        Engines: base / free / local / llm / official / custom
+│   ├── offline.py        Offline language-pack index, download and install
+│   ├── offline_dialog.py Offline language-pack manager UI
 │   ├── pipeline.py       Background “OCR → translate” pipeline
 │   ├── result_window.py  Floating result window
 │   ├── settings_window.py Settings dialog
@@ -221,7 +250,8 @@ snaptranslate/
     ├── make_shortcut.py  CLI shortcut creation
     ├── build.py          Build script
     ├── make_icon.py      Icon generator
-    ├── selftest.py       Env / OCR / translation self-test
+    ├── offline_pack.py   CLI for offline language packs
+    ├── selftest.py       Env / OCR / translation / offline self-test
     ├── gui_test.py       End-to-end smoke test
     ├── overlay_test.py   Coordinate mapping and selection tests
     └── ui_check.py       UI geometry self-check
@@ -282,6 +312,16 @@ These are all real problems hit while building this, recorded so they don't get 
    `WARNING: ... is not a package`) and the 15.4 MB of ONNX models never make it into the
    bundle. The resulting exe starts fine, shows its tray icon, logs normally — and then says
    “no OCR engine available” the moment you press the hotkey.
+
+7. **sentencepiece and CTranslate2 cannot open non-ASCII paths on Windows.**
+   Their C++ file APIs use narrow characters, so a model stored under a path containing
+   Chinese characters fails with
+   `NOT_FOUND: "D:\...\翻译软件\models\...\sentencepiece.model": No such file or directory`
+   — even though the file plainly exists and Python can read it. Workaround: when the path
+   is not pure ASCII, temporarily `os.chdir()` into the model directory and load using
+   relative filenames (“model”, “sentencepiece.model”). Both libraries read the model into
+   memory at construction time, so the working-directory switch is very brief — but it
+   still needs a lock, since `os.chdir` is process-global.
 
 ---
 
@@ -346,6 +386,11 @@ git push origin main --tags            :: tag push triggers the CI build & relea
 ## 11. Known limitations
 
 - **Windows only** (uses Win32 hotkeys, GDI screen capture, SAPI speech, WinRT OCR).
+- Offline translation quality is lower than the online engines — it uses compact OPUS-MT
+  models that run on CPU. Use it when privacy matters more than polish, and the online
+  engines (or an LLM key) when quality matters more.
+- Offline language packs are English-centric: other pairs are pivoted through English,
+  which costs a little quality.
 - With multiple monitors **at different scaling factors**, the selection overlay renders at
   the primary monitor's ratio and may be slightly offset. Single monitor or uniform scaling
   is unaffected.

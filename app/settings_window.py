@@ -338,6 +338,19 @@ class SettingsDialog(QDialog):
             ("", _label("引擎状态：\n" + "\n".join(stat_lines))),
         ])))
 
+        # ---- 本地离线翻译 ----
+        self.btn_offline = QPushButton("管理离线语言包…")
+        self.btn_offline.clicked.connect(self._open_offline)
+        self.lbl_offline = _label("")
+        root.addWidget(_group("本地离线翻译（隐私优先）", _form([
+            ("", _label(
+                "把「翻译引擎」选为 <b>本地离线翻译</b> 后，识别出的文字只在本机处理，"
+                "<b>不会发送到任何服务器</b>。此模式下即使翻译失败也不会自动切换到在线引擎。"
+                "首次使用需要先下载语言包（中英双向各约 70MB）。")),
+            ("", self.btn_offline),
+            ("", self.lbl_offline),
+        ])))
+
         t = self._cfg.section("translate")
         llm = t.get("llm") or {}
         self.ed_llm_url = QLineEdit(llm.get("base_url", ""))
@@ -399,6 +412,38 @@ class SettingsDialog(QDialog):
 
         root.addStretch(1)
         return outer
+
+    def _refresh_offline_status(self) -> None:
+        try:
+            from . import offline
+            from .translate import local
+
+            ready, note = local.engine_ready()
+            pairs = offline.installed_pairs()
+            lines = []
+            if pairs:
+                for (a, b), path in sorted(pairs.items()):
+                    lines.append("  · %s → %s（%.0f MB）"
+                                 % (offline.lang_name(a), offline.lang_name(b),
+                                    offline.dir_size_mb(path)))
+            else:
+                lines.append("  尚未安装任何语言包")
+            if local.missing_deps():
+                lines.append("  缺少依赖：%s" % "、".join(local.missing_deps()))
+            lines.append("  目录：%s" % offline.models_root())
+            self.lbl_offline.setText("\n".join(lines))
+        except Exception as e:  # noqa: BLE001
+            self.lbl_offline.setText("离线翻译状态读取失败：%s" % e)
+
+    def _open_offline(self) -> None:
+        from .offline_dialog import OfflinePackDialog
+
+        if getattr(self, "_offline_dlg", None) is None:
+            self._offline_dlg = OfflinePackDialog(self._cfg, self)
+            self._offline_dlg.changed.connect(self._refresh_offline_status)
+        self._offline_dlg.show()
+        self._offline_dlg.raise_()
+        self._offline_dlg.activateWindow()
 
     def _test_translate(self) -> None:
         self.btn_test.setEnabled(False)
@@ -612,6 +657,7 @@ class SettingsDialog(QDialog):
         self.chk_notify.setChecked(bool(be.get("notify", True)))
         self.sp_cache.setValue(int(be.get("cache_size", 300) or 300))
 
+        self._refresh_offline_status()
         self._refresh_hotkey_status()
 
     def _refresh_hotkey_status(self) -> None:

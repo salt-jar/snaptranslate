@@ -18,6 +18,7 @@ from .base import Provider, ProviderError, TranslateResult, chunk_text  # noqa: 
 from .custom import CustomProvider
 from .free import GoogleFreeProvider, MyMemoryProvider, YandexProvider, YoudaoFreeProvider
 from .llm import LlmProvider
+from .local import LocalProvider
 from .official import BaiduProvider, YoudaoOfficialProvider
 
 PROVIDERS: List[type] = [
@@ -25,6 +26,7 @@ PROVIDERS: List[type] = [
     YoudaoFreeProvider,
     MyMemoryProvider,
     GoogleFreeProvider,
+    LocalProvider,
     LlmProvider,
     BaiduProvider,
     YoudaoOfficialProvider,
@@ -32,7 +34,9 @@ PROVIDERS: List[type] = [
 ]
 _BY_KEY: Dict[str, type] = {p.key: p for p in PROVIDERS}
 
-#: 自动容错的尝试顺序（都是免 Key 引擎，保证一定可试）
+#: 自动容错的尝试顺序（都是免 Key 引擎，保证一定可试）。
+#: 注意这里**不包含** local：本地翻译是用户为隐私特意选的，
+#: 不能因为失败就偷偷把文本发到网上，见 _candidates()。
 FALLBACK_ORDER = ["youdao_free", "yandex", "mymemory", "google_free"]
 
 #: 有道免密只支持中英，其它目标语言时把它排到最后
@@ -84,6 +88,11 @@ def auto_order(dst: str) -> List[str]:
 
 
 def _candidates(engine: str, dst: str, fallback: bool) -> List[str]:
+    # 本地离线翻译绝不做在线兜底：用户选它就是为了"文本不出本机"，
+    # 一旦失败就转投在线引擎，等于把隐私保护偷偷取消了。
+    if engine == "local":
+        return ["local"]
+
     chain = auto_order(dst)
     if engine and engine != "auto":
         if not fallback:

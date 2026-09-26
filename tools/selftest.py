@@ -126,14 +126,62 @@ def check_translate() -> None:
             print("%s%-18s %s: %s" % (NG, key, type(ex).__name__, str(ex)[:120]))
 
 
+def check_offline() -> None:
+    section("4. 本地离线翻译")
+    from app import offline
+    from app.translate import _candidates, local
+
+    miss = local.missing_deps()
+    if miss:
+        print("  [!!] 缺少依赖：%s（运行 tools/install_deps.py）" % "、".join(miss))
+        return
+    print(OK + "推理引擎依赖齐全（ctranslate2 / sentencepiece）")
+
+    root = offline.models_root()
+    pairs = offline.installed_pairs()
+    print("  语言包目录：%s" % root)
+    if not pairs:
+        print("  [--] 尚未安装语言包。可在「设置 → 翻译引擎 → 管理离线语言包」下载。")
+        print("       中英双向各约 70MB，下载后翻译完全在本机完成。")
+        return
+    for (a, b), path in sorted(pairs.items()):
+        print("  [OK] %s → %s   %.0f MB   %s"
+              % (offline.lang_name(a), offline.lang_name(b),
+                 offline.dir_size_mb(path), path.name))
+
+    print("\n  隐私校验（关键）：")
+    chain = _candidates("local", "en", True)
+    if chain == ["local"]:
+        print("  [OK] 选定本地翻译时，候选链只有 local，"
+              "失败也不会把文本发到在线引擎")
+    else:
+        print("  [!!] 候选链异常：%s —— 本地翻译可能会回退到在线引擎！" % chain)
+
+    print("\n  离线翻译实测：")
+    from app.config import config
+    from app.translate import clear_cache, translate
+
+    cfg = dict(config.section("translate"))
+    cfg["engine"] = "local"
+    for text, src, dst in (("你好，世界。", "auto", "en"),
+                           ("Hello world, this is a test.", "auto", "zh-CHS")):
+        try:
+            clear_cache()
+            res = translate(text, src, dst, cfg)
+            print("  [OK] %s → %s" % (text[:26], res.text[:52]))
+        except Exception as e:  # noqa: BLE001
+            print("  [!!] %s → 失败：%s" % (text[:26], str(e)[:110]))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--ocr", action="store_true")
     ap.add_argument("--translate", action="store_true")
     ap.add_argument("--image", type=Path, default=ROOT / "tools" / "ocr_test.png")
     ap.add_argument("--deps", action="store_true")
+    ap.add_argument("--offline", action="store_true")
     args = ap.parse_args()
-    do_all = not (args.ocr or args.translate or args.deps)
+    do_all = not (args.ocr or args.translate or args.deps or args.offline)
 
     print("截译 SnapTranslate 自检 · Python %s" % sys.version.split()[0])
 
@@ -150,6 +198,8 @@ def main() -> int:
         check_ocr(args.image)
     if do_all or args.translate:
         check_translate()
+    if do_all or args.offline:
+        check_offline()
     print("\n完成。")
     return 0
 
