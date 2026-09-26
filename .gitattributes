@@ -1,0 +1,37 @@
+# 默认：交给 git 自动识别文本文件并在检出时保持原样
+* text=auto
+
+# --- Windows 脚本必须是 CRLF ---
+# cmd.exe 对「裸 LF 行尾」的 .bat 处理不可靠（尤其是 || 和 set 的组合），
+# 强制 CRLF 可以避免别人克隆下来后双击没反应。
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# --- 源码统一 LF，避免不同平台产生无意义的 diff ---
+*.py   text eol=lf
+*.pyi  text eol=lf
+*.md   text eol=lf
+*.txt  text eol=lf
+*.json text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.spec text eol=lf
+*.toml text eol=lf
+
+# --- 二进制文件不要做任何行尾转换 ---
+*.png binary
+*.jpg binary
+*.ico binary
+*.icns binary
+*.exe binary
+*.dll binary
+*.pyd binary
+*.onnx binary
+*.zip binary
+*.7z binary
+*.whl binary
+
+# --- 语言统计：把 vendor 排除掉，避免污染 GitHub 的语言占比 ---
+/vendor/** linguist-vendored
+/tools/ocr_test.png linguist-generated

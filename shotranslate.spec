@@ -1,0 +1,116 @@
+# -*- mode: python ; coding: utf-8 -*-
+"""PyInstaller 打包配置。
+
+在项目根目录执行：
+
+    pyinstaller shotranslate.spec --noconfirm
+
+或者直接双击「打包exe.bat」。
+
+注意：
+* 采用 onedir（一个文件夹）而不是 onefile：onnxruntime + OpenCV + PyQt5 体积很大，
+  onefile 每次启动都要把几百 MB 解压到临时目录，启动要等十几秒。
+* 系统里装的 matplotlib / scipy / pandas / tkinter 等与本程序无关，
+  必须显式排除，否则会被连带打进去并显著增大体积。
+"""
+import sys
+from pathlib import Path
+
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+
+ROOT = Path(SPECPATH).resolve()
+
+datas = [
+    (str(ROOT / "resources" / "icon.ico"), "resources"),
+    (str(ROOT / "app" / "ocr" / "winocr.ps1"), "app/ocr"),
+]
+
+# RapidOCR 的 ONNX 模型文件是包内数据，必须一起带上
+for pkg in ("rapidocr_onnxruntime",):
+    try:
+        datas += collect_data_files(pkg)
+    except Exception:
+        pass
+
+hiddenimports = [
+    "rapidocr_onnxruntime",
+    "onnxruntime",
+    "shapely",
+    "pyclipper",
+    "yaml",
+    "cv2",
+    "mss",
+    "pynput",
+    "pynput.keyboard._win32",
+    "pynput.mouse._win32",
+    "PyQt5.QtNetwork",
+    "PyQt5.QtTextToSpeech",
+]
+for pkg in ("rapidocr_onnxruntime", "shapely", "pyclipper"):
+    try:
+        hiddenimports += collect_submodules(pkg)
+    except Exception:
+        pass
+
+excludes = [
+    "matplotlib", "scipy", "pandas", "tkinter", "IPython", "notebook",
+    "nbformat", "rembg", "skimage", "pywebview", "pythonnet", "clr_loader",
+    "PyQt5.QtWebEngineWidgets", "PyQt5.QtQml", "PyQt5.QtQuick",
+    "PyQt5.Qt3DCore", "PyQt5.QtBluetooth", "PyQt5.QtDesigner",
+    "PyQt5.QtHelp", "PyQt5.QtLocation", "PyQt5.QtMultimediaWidgets",
+    "PyQt5.QtNfc", "PyQt5.QtOpenGL", "PyQt5.QtPositioning",
+    "PyQt5.QtQuickWidgets", "PyQt5.QtRemoteObjects", "PyQt5.QtSensors",
+    "PyQt5.QtSerialPort", "PyQt5.QtSql", "PyQt5.QtTest", "PyQt5.QtWebChannel",
+    "PyQt5.QtWebSockets", "PyQt5.QtXml", "PyQt5.QtXmlPatterns",
+    "pytest", "setuptools", "pip",
+]
+
+block_cipher = None
+
+a = Analysis(
+    [str(ROOT / "main.py")],
+    pathex=[str(ROOT)],
+    binaries=[],
+    datas=datas,
+    hiddenimports=hiddenimports,
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=excludes,
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
+    noarchive=False,
+)
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name="SnapTranslate",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=False,
+    console=False,          # 无控制台窗口
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon=str(ROOT / "resources" / "icon.ico"),
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name="SnapTranslate",
+)
