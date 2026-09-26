@@ -1,12 +1,27 @@
 name: Build & Release
 
-# 推送 v* 标签时自动打包并发布 Release；
-# 也可以在 Actions 页面手动触发（workflow_dispatch）只产出构建产物。
+# 推送 v* 标签时自动打包并发布 Release。
+# 也可以在 Actions 页面手动触发并填入已有标签（例如 v1.0.0）来补构建。
+#
+# 【为什么这个文件在 ci/ 而不是 .github/workflows/】
+# GitHub 规定：向 .github/workflows/ 推送文件需要 token 具备额外的 workflow 权限，
+# 普通 repo 权限会被直接拒绝（报 "refusing to allow an OAuth App to create or
+# update workflow ... without workflow scope"）。为了不改动推送权限，
+# 默认先放在这里。启用方式二选一：
+#   1. 在 GitHub 网页上新建 .github/workflows/release.yml，把本文件内容粘进去提交；
+#   2. 本地执行（要求 token 已有 workflow 权限，可用 gh auth refresh -s workflow 补）：
+#        git mv ci/release.workflow.yml .github/workflows/release.yml
+#        git commit -m "ci: 启用自动打包" && git push
 on:
   push:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: '要打包的标签（如 v1.0.0）；留空则只产出构建产物，不发布 Release'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -19,6 +34,8 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: 安装 Python
         uses: actions/setup-python@v5
@@ -41,6 +58,13 @@ jobs:
       - name: 打包（PyInstaller）
         run: pyinstaller shotranslate.spec --noconfirm
 
+      - name: 确认 OCR 模型已打进包里
+        shell: pwsh
+        run: |
+          $models = Get-ChildItem -Path dist/SnapTranslate -Recurse -Filter *.onnx
+          Write-Host "包内 ONNX 模型：$($models.Count) 个"
+          if ($models.Count -lt 1) { throw "OCR 模型没有被收集进包，产物不可用" }
+
       - name: 压缩产物
         shell: pwsh
         run: |
@@ -54,12 +78,12 @@ jobs:
           path: SnapTranslate-win64.zip
           retention-days: 30
 
-      - name: 创建 GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: 创建 / 更新 GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') || inputs.tag != ''
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
           files: SnapTranslate-win64.zip
           body_path: RELEASE_NOTES.md
           draft: false
           prerelease: false
-          generate_release_notes: false

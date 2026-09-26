@@ -20,12 +20,26 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 ROOT = Path(SPECPATH).resolve()
 
+# 依赖装在 vendor/，必须让 PyInstaller 进程本身也能 import 到，
+# 否则下面的 collect_data_files() 会报
+# "skipping data collection for module ... as it is not a package"。
+sys.path.insert(0, str(ROOT / "vendor"))
+
 datas = [
     (str(ROOT / "resources" / "icon.ico"), "resources"),
     (str(ROOT / "app" / "ocr" / "winocr.ps1"), "app/ocr"),
 ]
 
-# RapidOCR 的 ONNX 模型文件是包内数据，必须一起带上
+# RapidOCR 的 ONNX 模型是包内数据文件，必须一起带上。
+# 不放心只靠 collect_data_files，这里再按固定路径显式加一遍——缺了模型
+# 打出来的 exe 会正常启动，但一截图就提示"没有可用的 OCR 引擎"。
+_rapid = ROOT / "vendor" / "rapidocr_onnxruntime"
+if _rapid.is_dir():
+    if (_rapid / "models").is_dir():
+        datas.append((str(_rapid / "models"), "rapidocr_onnxruntime/models"))
+    if (_rapid / "config.yaml").is_file():
+        datas.append((str(_rapid / "config.yaml"), "rapidocr_onnxruntime"))
+
 for pkg in ("rapidocr_onnxruntime",):
     try:
         datas += collect_data_files(pkg)
@@ -69,7 +83,10 @@ block_cipher = None
 
 a = Analysis(
     [str(ROOT / "main.py")],
-    pathex=[str(ROOT)],
+    # vendor/ 必须一起加进 pathex：依赖是装在那个目录里的，
+    # PyInstaller 不知道 main.py 运行时会往 sys.path 里插它，
+    # 少了这一条 mss / pynput / rapidocr 全都找不到。
+    pathex=[str(ROOT), str(ROOT / "vendor")],
     binaries=[],
     datas=datas,
     hiddenimports=hiddenimports,
