@@ -210,44 +210,11 @@ def decode(sp, tokens: List[str]) -> str:
 # --------------------------------------------------------------------- 语种识别
 
 
-def _script_of(text: str) -> str:
-    counts = {"han": 0, "kana": 0, "hangul": 0, "cyrillic": 0, "latin": 0,
-              "arabic": 0, "thai": 0}
-    for ch in text:
-        o = ord(ch)
-        if 0x4E00 <= o <= 0x9FFF or 0x3400 <= o <= 0x4DBF:
-            counts["han"] += 1
-        elif 0x3040 <= o <= 0x30FF:
-            counts["kana"] += 1
-        elif 0xAC00 <= o <= 0xD7AF or 0x1100 <= o <= 0x11FF:
-            counts["hangul"] += 1
-        elif 0x0400 <= o <= 0x04FF:
-            counts["cyrillic"] += 1
-        elif 0x0600 <= o <= 0x06FF:
-            counts["arabic"] += 1
-        elif 0x0E00 <= o <= 0x0E7F:
-            counts["thai"] += 1
-        elif ("a" <= ch <= "z") or ("A" <= ch <= "Z"):
-            counts["latin"] += 1
-
-    if counts["kana"] > 0:
-        return "ja"
-    if counts["hangul"] > 0:
-        return "ko"
-    if counts["han"] > 0:
-        return "zh"
-    if counts["cyrillic"] > counts["latin"]:
-        return "ru"
-    if counts["arabic"] > 0:
-        return "ar"
-    if counts["thai"] > 0:
-        return "th"
-    return "en"
-
-
 def detect(text: str) -> str:
-    """返回 argos 语言代码。判断不了就当作英语。"""
-    return _script_of(text or "")
+    """返回 argos 语言代码（内部实现见 :mod:`app.translate.langdetect`）。"""
+    from . import langdetect
+
+    return langdetect.dominant(text or "")
 
 
 # --------------------------------------------------------------------- 引擎
@@ -327,7 +294,7 @@ class LocalProvider(Provider):
             for i, r in zip(short_idx, results):
                 out[i] = decode(sp, r.hypotheses[0]) if r.hypotheses else ""
 
-        # 超长的行单独切段处理
+        # 超长的行单独切段处理（chunk_text 按行切分，所以用换行拼回）
         for i in long_idx:
             parts = chunk_text(texts[i], MAX_CHUNK) or [texts[i]]
             pieces = self._run_hop_batch(src, dst, parts)
@@ -339,11 +306,9 @@ class LocalProvider(Provider):
         chain = resolve_chain(a, b)
         out = text
         for hop_from, hop_to in chain:
-            pieces: List[str] = []
-            for part in chunk_text(out, MAX_CHUNK) or [out]:
-                pieces.append(self._run_hop(hop_from, hop_to, part))
-            out = ("".join(pieces) if hop_to in ("zh", "zt", "ja", "ko")
-                   else " ".join(p for p in pieces if p))
+            pieces = self._run_hop_batch(hop_from, hop_to,
+                                         chunk_text(out, MAX_CHUNK) or [out])
+            out = "\n".join(p for p in pieces if p)
         return out.strip(), ("zh-CHS" if a == "zh" else a)
 
     def translate(self, text: str, src: str, dst: str, progress=None):

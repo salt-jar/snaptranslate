@@ -351,6 +351,22 @@ class SettingsDialog(QDialog):
             ("", self.lbl_offline),
         ])))
 
+        # ---- 术语表 ----
+        self.txt_glossary = QPlainTextEdit()
+        self.txt_glossary.setFixedHeight(96)
+        self.txt_glossary.setPlaceholderText(
+            "每行一条，例如：\nGPU=GPU\n量化=quantization\nONNX Runtime=ONNX Runtime")
+        root.addWidget(_group("术语表 / 代码保护", _form([
+            ("", _label(
+                "每行一条，支持 <code>源=译</code>、<code>源=>译</code>；"
+                "只写一个词表示<b>保持原样</b>。<br>"
+                "程序还会自动保护文件名、URL、版本号、CamelCase 标识符、快捷键等"
+                "——这些片段直接送去翻译会被改写（实测 <code>config.json</code> "
+                "变成 <code>config。json</code>、<code>PP-OCRv4</code> 变成 "
+                "<code>pp - ocv4</code>）。")),
+            ("", self.txt_glossary),
+        ])))
+
         t = self._cfg.section("translate")
         llm = t.get("llm") or {}
         self.ed_llm_url = QLineEdit(llm.get("base_url", ""))
@@ -504,6 +520,8 @@ class SettingsDialog(QDialog):
                 "body": self.ed_cu_body.text().strip(),
                 "result_path": self.ed_cu_path.text().strip(),
             },
+            "glossary": [ln.strip() for ln in
+                         self.txt_glossary.toPlainText().splitlines() if ln.strip()],
         })
         return cfg
 
@@ -643,6 +661,7 @@ class SettingsDialog(QDialog):
         self._select(self.cmb_dst, tr.get("target", "zh-CHS"))
         self.chk_fallback.setChecked(bool(tr.get("fallback", True)))
         self.sp_timeout.setValue(int(tr.get("timeout", 12) or 12))
+        self.txt_glossary.setPlainText("\n".join(tr.get("glossary") or []))
 
         self.sp_font.setValue(int(ui.get("font_size", 12) or 12))
         self.sp_width.setValue(int(ui.get("result_width", 560) or 560))

@@ -38,6 +38,9 @@ DEFAULTS: Dict[str, Any] = {
         "fallback": True,          # 主引擎失败时自动换备用引擎
         "timeout": 12,
         "max_chunk": 1400,         # 单次请求最大字符数，超出自动分段
+        # 术语表：每行一条，支持 `源=译`、`源=>译`、`源→译`；只写一个词表示保持原样。
+        # 例：["GPU=GPU", "量化=quantization", "ONNX Runtime=ONNX Runtime"]
+        "glossary": [],
         "llm": {
             "base_url": "https://api.deepseek.com/v1",
             "api_key": "",

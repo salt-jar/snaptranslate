@@ -99,39 +99,82 @@ def http_text(url: str, method: str = "GET", payload: Optional[dict] = None,
 
 # --------------------------------------------------------------------- 分段
 
-_SENT_END = re.compile(r"(?<=[。！？!?…；;\.])\s*")
+#: 句末标点，只用于「超长单行」的折行，**不用于跨行切分**
+_SENT_END = re.compile(r"[^。！？!?…；;.]*[。！？!?…；;.]\s*")
 
 
-def chunk_text(text: str, limit: int) -> List[str]:
-    """按句子边界把长文本切成不超过 ``limit`` 字符的片段。"""
-    text = text or ""
-    if limit <= 0 or len(text) <= limit:
-        return [text] if text else []
+def _split_long_line(line: str, limit: int) -> List[str]:
+    """把超过 ``limit`` 的单行按句子边界切开（无损），句子仍超长的再硬切。"""
+    pieces = [m.group(0) for m in _SENT_END.finditer(line)]
+    consumed = sum(len(p) for p in pieces)
+    if consumed < len(line):
+        pieces.append(line[consumed:])
 
-    pieces: List[str] = []
-    for part in _SENT_END.split(text):
-        if not part:
-            continue
-        if len(part) <= limit:
-            pieces.append(part)
-            continue
-        # 单句就超长：先按换行，再硬切
-        for line in part.split("\n"):
-            if len(line) <= limit:
-                pieces.append(line + "\n")
-            else:
-                for i in range(0, len(line), limit):
-                    pieces.append(line[i:i + limit])
-    chunks: List[str] = []
+    out: List[str] = []
     cur = ""
     for p in pieces:
+        if len(p) > limit:
+            if cur:
+                out.append(cur)
+                cur = ""
+            for i in range(0, len(p), limit):
+                out.append(p[i:i + limit])
+            continue
         if cur and len(cur) + len(p) > limit:
-            chunks.append(cur)
+            out.append(cur)
             cur = ""
         cur += p
     if cur:
-        chunks.append(cur)
-    return [c for c in chunks if c.strip()]
+        out.append(cur)
+    return out
+
+
+def chunk_text(text: str, limit: int) -> List[str]:
+    """按**行边界**把文本切成不超过 ``limit`` 字符的片段。
+
+    这里修掉的是「长文本丢行结构」这个 bug：旧实现用 ``_SENT_END`` 按句号切分，
+    而正则里的 ``\\s*`` 会把句号后面的换行一并吃掉，于是重新拼接后
+    实测出现 **30 行 → 1 行**（文本超过 ``max_chunk`` 才会触发切分，
+    所以短文本看起来是正常的，问题只在长文本上暴露）。
+
+    现在只在行边界切分，行内的换行原样保留。调用方按 ``"\\n".join(chunks)``
+    拼回即可还原行结构 —— 实测有道与 Yandex 对多行输入都会保留内部换行。
+
+    唯一例外是单行本身就超过 ``limit`` 的情况（截图 OCR 几乎不会出现），
+    那时会在句子边界折断，拼回时多出一个换行。
+    """
+    text = text or ""
+    if not text:
+        return []
+    if limit <= 0 or len(text) <= limit:
+        return [text]
+
+    chunks: List[str] = []
+    cur: List[str] = []
+    cur_len = 0
+
+    def flush() -> None:
+        nonlocal cur, cur_len
+        if cur:
+            chunks.append("\n".join(cur))
+            cur = []
+            cur_len = 0
+
+    for line in text.split("\n"):
+        if len(line) > limit:
+            flush()
+            chunks.extend(_split_long_line(line, limit))
+            continue
+        extra = len(line) + (1 if cur else 0)
+        if cur and cur_len + extra > limit:
+            flush()
+            extra = len(line)
+        cur.append(line)
+        cur_len += extra
+    flush()
+
+    kept = [c for c in chunks if c.strip()]
+    return kept or [text]
 
 
 # --------------------------------------------------------------------- 基类
@@ -167,7 +210,11 @@ class Provider:
 
     def translate(self, text: str, src: str, dst: str,
                   progress=None) -> Tuple[str, str]:
-        """返回 ``(译文, 检测到的源语言)``。"""
+        """返回 ``(译文, 检测到的源语言)``。
+
+        分段之间用换行拼接：``chunk_text`` 只在行边界切分，
+        所以这样拼回来能还原原文的行结构。
+        """
         text = (text or "").strip()
         if not text:
             return "", ""
@@ -178,13 +225,12 @@ class Provider:
         for i, ch in enumerate(chunks):
             if progress:
                 progress(i, len(chunks))
-            piece, lang = self.translate_chunk(ch, src, dst), ""
+            piece = self.translate_chunk(ch, src, dst)
             if isinstance(piece, tuple):
                 piece, lang = piece
-            detected = detected or lang or ""
+                detected = detected or (lang or "")
             out.append(piece)
-        joiner = "" if _is_cjk(dst) else " "
-        return joiner.join(out).strip(), detected
+        return "\n".join(out).strip(), detected
 
 
 def _is_cjk(lang: str) -> bool:

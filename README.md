@@ -152,6 +152,21 @@ The default target is **Auto**, which behaves like this:
 
 The status bar tells you when this happened: *“source was already Chinese, auto-translated to English”*.
 
+### Translation quality: what happens to the text
+
+Everything below was added because a real problem showed up in testing, not because it
+seemed like a good idea:
+
+| Behaviour | Problem it fixes |
+| --- | --- |
+| **Line structure is preserved** | Screenshots are multi-line. Once the text exceeded the per-request limit (1400 chars for Youdao), the chunking logic also swallowed the newlines — **30 lines collapsed into 1** |
+| **Mixed-language text is handled line by line** | Only the lines that need translating are sent; lines already in the target language are kept verbatim. Previously the whole block went to the engine, so Chinese lines were needlessly translated and a “reverse translation” could fire — **you asked for Chinese and got English** |
+| **Code and terminology are protected** | `config.json` became `config。json` (full-width period — the path breaks), `PP-OCRv4` became `pp - ocv4`, `ONNX Runtime` became `ONNX运行时`. These fragments are now swapped for placeholders before translation and restored afterwards |
+| **User glossary** | Add `source=target` lines under *Settings → Translation engines → Glossary*, e.g. `quantization=量化`. A bare word means “leave it alone” |
+
+> All of this is guarded by a regression suite — `python tools\test_translation.py`, 62
+> assertions — so you can tell instantly whether a change to the translation path broke anything.
+
 ---
 
 ## 4. OCR engines
@@ -234,6 +249,7 @@ snaptranslate/
 │   ├── hotkeys.py        Global hotkeys (Win32 RegisterHotKey + hook fallback)
 │   ├── ocr/              Engines: base / rapid / winocr / tesseract / preprocess
 │   ├── translate/        Engines: base / free / local / llm / official / custom
+│   │                     + langdetect (script-based language ID) / glossary (term protection)
 │   ├── offline.py        Offline language-pack index, download and install
 │   ├── offline_dialog.py Offline language-pack manager UI
 │   ├── pipeline.py       Background “OCR → translate” pipeline
@@ -252,6 +268,8 @@ snaptranslate/
     ├── make_icon.py      Icon generator
     ├── offline_pack.py   CLI for offline language packs
     ├── selftest.py       Env / OCR / translation / offline self-test
+    ├── test_translation.py Translation-pipeline regression suite (62 assertions)
+    ├── diagnose_translation.py Translation-quality diagnosis by failure mode
     ├── gui_test.py       End-to-end smoke test
     ├── overlay_test.py   Coordinate mapping and selection tests
     └── ui_check.py       UI geometry self-check
@@ -322,6 +340,22 @@ These are all real problems hit while building this, recorded so they don't get 
    relative filenames (“model”, “sentencepiece.model”). Both libraries read the model into
    memory at construction time, so the working-directory switch is very brief — but it
    still needs a lock, since `os.chdir` is process-global.
+
+8. **The placeholder format used for terminology protection was chosen by measurement —
+   `[[n]]` does not work.** Youdao passes `[[n]]` through when it stands alone on a line,
+   but wraps it as `[b[n]]` (its bold markup) when embedded in a sentence; the offline engine
+   truncates `[[0]]` into `[[0]`. The behaviour is not even stable between runs. Testing
+   repeatedly on the exact sentence that broke, `{n}` was the only form that survived
+   consistently. Three layers of defence on top anyway: accept known mutations → only
+   substitute slots that actually exist (so real bracketed numbers in the translation are
+   left alone) → strip the fragments left behind when the engine shatters a placeholder.
+
+9. **Newlines and sentence punctuation are two different things.**
+   The old chunking regex `(?<=[。！？!?…；;\.])\s*` swallowed the newline *after* a full stop
+   via its `\s*`, so long text lost its entire line structure once reassembled. Chunking now
+   only ever splits at line boundaries and the caller rejoins with `"\n"`. Related: the
+   brace-protection pattern must be **first** in the pattern list — placeholders themselves
+   look like `{n}`, so a later position makes it mask its own output.
 
 ---
 
