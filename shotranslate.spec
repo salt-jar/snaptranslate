@@ -32,7 +32,8 @@ sys.path.insert(0, str(ROOT / "vendor"))
 binaries = []
 
 datas = [
-    (str(ROOT / "resources" / "icon.ico"), "resources"),
+    # 整个 resources/ 目录：图标、下拉箭头、勾选标记等样式资源
+    (str(ROOT / "resources"), "resources"),
     (str(ROOT / "app" / "ocr" / "winocr.ps1"), "app/ocr"),
 ]
 

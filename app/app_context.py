@@ -17,7 +17,7 @@ from .result_window import ResultWindow
 from .screen import ScreenMapper
 from .settings_window import SettingsDialog
 from .speech import Speaker
-from .theme import stylesheet
+from . import theme
 from .tray import Tray, app_icon, message_icon
 
 log = logging.getLogger("snaptranslate.ctx")
@@ -92,10 +92,11 @@ class AppContext(QObject):
             QTimer.singleShot(600, lambda: self.notify("截译已启动", " · ".join(tips)))
 
     def apply_theme(self) -> None:
-        self.app.setStyleSheet(stylesheet(
-            str(self.cfg.get("ui.theme", "dark")),
-            int(self.cfg.get("ui.font_size", 12) or 12),
-        ))
+        theme.apply(
+            self.app,
+            str(self.cfg.get("ui.theme", "light")),
+            int(self.cfg.get("ui.font_size", 13) or 13),
+        )
 
     # ---------------------------------------------------------------- 热键
 

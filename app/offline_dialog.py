@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""离线语言包管理界面。
+"""离线语言包管理界面（iOS 风格列表）。
 
 功能：获取语言包列表（多镜像）、按语言筛选、查看体积、下载 / 删除。
 下载在后台线程里跑，界面不会卡；尺寸用后台 HEAD 请求补齐并缓存。
+后台线程只发信号，所有界面更新都回到主线程。
 """
 from __future__ import annotations
 
@@ -12,11 +13,11 @@ import urllib.request
 from typing import Dict, List, Optional, Tuple
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QIcon
+from PyQt5.QtGui import QBrush, QColor, QIcon
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QComboBox,
-    QDialog,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -29,41 +30,56 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
 )
 
-from . import offline, paths
+from . import offline, paths, theme
+from .widgets import FramelessDialog
 
 _COL_PAIR, _COL_SIZE, _COL_STATE = 0, 1, 2
 
 
-class OfflinePackDialog(QDialog):
+class OfflinePackDialog(FramelessDialog):
     changed = pyqtSignal()
+
+    status_text = pyqtSignal(str)
+    index_ready = pyqtSignal(object)
+    index_failed = pyqtSignal(str)
+    sizes_ready = pyqtSignal(object)
+    progress_value = pyqtSignal(int, str)
+    download_done = pyqtSignal()
 
     def __init__(self, cfg, parent=None):
         super().__init__(parent)
         self._cfg = cfg
         self.setWindowTitle("离线语言包管理")
         self.setWindowIcon(QIcon(str(paths.icon_path())))
-        self.setMinimumSize(760, 560)
+        self.set_title("离线语言包", "下载一次，之后翻译全程离线")
+        self.resize(880, 690)
+        self.setMinimumSize(720, 560)
 
         self._packs: List[offline.PackInfo] = []
         self._installed: Dict[Tuple[str, str], "object"] = {}
         self._sizes: Dict[str, float] = self._load_size_cache()
         self._busy = False
         self._cancel = False
+        self._stop = threading.Event()
 
         self._build()
+        self._wire_signals()
         self._refresh_installed()
         self._load_index()
+
+    def _wire_signals(self) -> None:
+        self.status_text.connect(self._set_status)
+        self.index_ready.connect(self._on_index_ready)
+        self.index_failed.connect(self._on_index_failed)
+        self.sizes_ready.connect(self._on_sizes_ready)
+        self.progress_value.connect(self._on_progress)
+        self.download_done.connect(self._on_download_done)
 
     # ---------------------------------------------------------------- 构建
 
     def _build(self) -> None:
-        root = QVBoxLayout(self)
-        root.setContentsMargins(14, 14, 14, 12)
-        root.setSpacing(10)
-
-        title = QLabel("离线翻译语言包")
-        title.setObjectName("TitleLabel")
-        root.addWidget(title)
+        root = self.body_layout
+        root.setSpacing(12)
 
         tip = QLabel(
             "下载后翻译完全在本机完成，<b>文本不会离开你的电脑，也不会产生任何网络请求</b>。"
@@ -77,9 +93,9 @@ class OfflinePackDialog(QDialog):
         # ---- 筛选行 ----
         bar = QHBoxLayout()
         bar.setSpacing(8)
-        bar.addWidget(QLabel("筛选"))
         self.cmb_lang = QComboBox()
-        self.cmb_lang.setMinimumWidth(180)
+        self.cmb_lang.setMinimumWidth(170)
+        self.cmb_lang.setMaximumWidth(240)
         self.cmb_lang.currentIndexChanged.connect(self._populate)
         bar.addWidget(self.cmb_lang)
 
@@ -100,9 +116,17 @@ class OfflinePackDialog(QDialog):
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setShowGrid(False)
+        self.table.setFrameShape(QFrame.NoFrame)
+        self.table.setAlternatingRowColors(False)
+        self.table.verticalHeader().setDefaultSectionSize(44)
+        self.table.horizontalHeader().setFixedHeight(38)
+        self.table.horizontalHeader().setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.table.horizontalHeader().setSectionResizeMode(_COL_PAIR, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(_COL_SIZE, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(_COL_STATE, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(
+            _COL_SIZE, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(
+            _COL_STATE, QHeaderView.ResizeToContents)
         self.table.itemSelectionChanged.connect(self._update_buttons)
         root.addWidget(self.table, 1)
 
@@ -110,6 +134,7 @@ class OfflinePackDialog(QDialog):
         self.bar_progress = QProgressBar()
         self.bar_progress.setRange(0, 100)
         self.bar_progress.setValue(0)
+        self.bar_progress.setTextVisible(False)
         self.bar_progress.setVisible(False)
         root.addWidget(self.bar_progress)
 
@@ -119,12 +144,14 @@ class OfflinePackDialog(QDialog):
 
         # ---- 按钮 ----
         btns = QHBoxLayout()
+        btns.setSpacing(8)
         self.btn_download = QPushButton("下载选中")
         self.btn_download.setProperty("accent", True)
         self.btn_download.clicked.connect(self._download_selected)
         btns.addWidget(self.btn_download)
 
         self.btn_delete = QPushButton("删除选中")
+        self.btn_delete.setProperty("danger", True)
         self.btn_delete.clicked.connect(self._delete_selected)
         btns.addWidget(self.btn_delete)
 
@@ -145,6 +172,9 @@ class OfflinePackDialog(QDialog):
     def _refresh_installed(self) -> None:
         self._installed = offline.installed_pairs()
 
+    def _set_status(self, text: str) -> None:
+        self.lbl_status.setText(text)
+
     def _load_index(self, force: bool = False) -> None:
         if self._busy:
             return
@@ -152,23 +182,35 @@ class OfflinePackDialog(QDialog):
         self.btn_reload.setEnabled(False)
         self.lbl_status.setText("正在获取语言包列表…")
         self._cancel = False
+        stop = self._stop
 
         def work():
             try:
                 packs = offline.fetch_index(force=force)
-                self._packs = packs
-                self.lbl_status.setText("共 %d 个语言包，可下载" % len(packs))
-                self._rebuild_lang_filter()
-                self._populate()
-                threading.Thread(target=self._fetch_sizes,
-                                 args=([p for p in packs],), daemon=True).start()
             except Exception as e:  # noqa: BLE001
-                self.lbl_status.setText("获取失败：%s" % e)
-            finally:
-                self._busy = False
-                self.btn_reload.setEnabled(True)
+                if not stop.is_set():
+                    self.index_failed.emit(str(e))
+                return
+            if not stop.is_set():
+                self.index_ready.emit(packs)
 
         threading.Thread(target=work, daemon=True).start()
+
+    def _on_index_ready(self, packs) -> None:
+        self._busy = False
+        self.btn_reload.setEnabled(True)
+        self._packs = list(packs)
+        self._rebuild_lang_filter()
+        self._populate()
+        self._update_buttons()
+        self.lbl_status.setText("共 %d 个语言包，可下载" % len(self._packs))
+        threading.Thread(target=self._fetch_sizes, args=(list(self._packs),),
+                         daemon=True).start()
+
+    def _on_index_failed(self, message: str) -> None:
+        self._busy = False
+        self.btn_reload.setEnabled(True)
+        self.lbl_status.setText("获取失败：%s" % message)
 
     def _rebuild_lang_filter(self) -> None:
         langs = offline.available_languages(self._packs)
@@ -201,6 +243,7 @@ class OfflinePackDialog(QDialog):
             0 if p.to_code in ("zh", "zt") else 1,
             offline.lang_name(p.from_code), offline.lang_name(p.to_code)))
 
+        colors = theme.current_palette()
         self.table.setRowCount(len(rows))
         for i, p in enumerate(rows):
             pair = QTableWidgetItem("%s → %s" % (offline.lang_name(p.from_code),
@@ -209,12 +252,14 @@ class OfflinePackDialog(QDialog):
             self.table.setItem(i, _COL_PAIR, pair)
 
             size = self._sizes.get(p.url)
-            self.table.setItem(i, _COL_SIZE,
-                               QTableWidgetItem("%.0f MB" % size if size else "—"))
+            size_item = QTableWidgetItem("%.0f MB" % size if size else "—")
+            size_item.setForeground(QBrush(QColor(colors.get("text_dim", "#8A8A8E"))))
+            self.table.setItem(i, _COL_SIZE, size_item)
 
             installed = p.pair in self._installed
             state = QTableWidgetItem("已安装" if installed else "未安装")
-            state.setForeground(Qt.green if installed else Qt.gray)
+            state.setForeground(QBrush(QColor(
+                colors.get("ok", "#34C759") if installed else colors.get("text_dim", "#8A8A8E"))))
             self.table.setItem(i, _COL_STATE, state)
 
         self._update_buttons()
@@ -240,8 +285,11 @@ class OfflinePackDialog(QDialog):
 
     def _fetch_sizes(self, packs: List[offline.PackInfo]) -> None:
         """后台补全体积（每个只做一次 HEAD，结果落盘缓存）。"""
-        changed = False
+        found: Dict[str, float] = {}
+        stop = self._stop
         for p in packs:
+            if stop.is_set():
+                return
             if p.url in self._sizes:
                 continue
             try:
@@ -252,13 +300,18 @@ class OfflinePackDialog(QDialog):
                                             context=offline._SSL) as r:  # noqa: SLF001
                     n = int(r.headers.get("Content-Length") or 0)
                 if n:
-                    self._sizes[p.url] = n / 1048576
-                    changed = True
+                    found[p.url] = n / 1048576
             except Exception:
                 continue
-        if changed:
-            self._save_size_cache()
-            self._populate()
+        if found and not stop.is_set():
+            self.sizes_ready.emit(found)
+
+    def _on_sizes_ready(self, found: dict) -> None:
+        if not found:
+            return
+        self._sizes.update(found)
+        self._save_size_cache()
+        self._populate()
 
     # ---------------------------------------------------------------- 操作
 
@@ -296,35 +349,56 @@ class OfflinePackDialog(QDialog):
         self._busy = True
         self._cancel = False
         self.bar_progress.setVisible(True)
+        self.bar_progress.setValue(0)
         self.btn_download.setEnabled(False)
         self.btn_delete.setEnabled(False)
 
         total = len(packs)
+        stop = self._stop
 
         def work():
             for i, p in enumerate(packs):
+                if stop.is_set():
+                    return
                 label = "%s → %s" % (offline.lang_name(p.from_code),
                                      offline.lang_name(p.to_code))
 
                 def progress(pct, note, i=i, label=label):
+                    if stop.is_set():
+                        return
                     overall = int((i + pct / 100.0) * 100 / total)
-                    self.bar_progress.setValue(overall)
-                    self.lbl_status.setText("[%d/%d] %s · %s" % (i + 1, total, label, note))
+                    self.progress_value.emit(
+                        overall, "[%d/%d] %s · %s" % (i + 1, total, label, note))
 
                 try:
                     offline.install_pack(p, progress=progress,
-                                         cancelled=lambda: self._cancel)
-                    self.lbl_status.setText("[%d/%d] %s · 完成" % (i + 1, total, label))
+                                         cancelled=lambda: self._cancel or stop.is_set())
+                    if not stop.is_set():
+                        self.progress_value.emit(
+                            int((i + 1) * 100 / total),
+                            "[%d/%d] %s · 完成" % (i + 1, total, label))
                 except Exception as e:  # noqa: BLE001
-                    self.lbl_status.setText("[%d/%d] %s · 失败：%s"
-                                            % (i + 1, total, label, str(e)[:120]))
-            self._busy = False
-            self.bar_progress.setVisible(False)
-            self._refresh_installed()
-            self._populate()
-            self.changed.emit()
+                    if not stop.is_set():
+                        self.progress_value.emit(
+                            int((i + 1) * 100 / total),
+                            "[%d/%d] %s · 失败：%s"
+                            % (i + 1, total, label, str(e)[:120]))
+            if not stop.is_set():
+                self.download_done.emit()
 
         threading.Thread(target=work, daemon=True).start()
+
+    def _on_progress(self, value: int, text: str) -> None:
+        self.bar_progress.setValue(value)
+        self.lbl_status.setText(text)
+
+    def _on_download_done(self) -> None:
+        self._busy = False
+        self.bar_progress.setVisible(False)
+        self._refresh_installed()
+        self._populate()
+        self._update_buttons()
+        self.changed.emit()
 
     def _delete_selected(self) -> None:
         pairs = [p for p in self._selected_pairs() if p in self._installed]
@@ -358,4 +432,5 @@ class OfflinePackDialog(QDialog):
 
     def closeEvent(self, ev):
         self._cancel = True
+        self._stop.set()
         super().closeEvent(ev)

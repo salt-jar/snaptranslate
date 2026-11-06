@@ -22,6 +22,12 @@ import time
 from pathlib import Path
 from typing import List, Tuple
 
+# Windows 控制台常是 GBK；自绘图标使用私用区字符，避免直接 print 时崩溃
+try:
+    sys.stdout.reconfigure(errors="replace")
+except Exception:
+    pass
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
@@ -100,6 +106,13 @@ def describe(root: QWidget, label: str, limit: int = 40) -> None:
                     break
                 except Exception:
                     pass
+        # 自绘控件会用 Segoe Fluent Icons 的私用区字符（如 E713 齿轮），
+        # 控制台多半是 GBK，直接 print 会 UnicodeEncodeError，这里替换掉。
+        enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+        try:
+            text = text.encode(enc, "replace").decode(enc, "replace")
+        except Exception:
+            text = text.encode("ascii", "replace").decode("ascii")
         print("    %-22s %4d,%4d %4dx%-4d %s"
               % (type(w).__name__, r.x(), r.y(), r.width(), r.height(), text))
         shown += 1

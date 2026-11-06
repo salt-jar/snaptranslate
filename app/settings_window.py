@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
-"""设置窗口。"""
+"""设置窗口（iOS 风格分组卡片 + 分段标签页）。"""
 from __future__ import annotations
 
 import os
-import subprocess
 import threading
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -11,12 +10,9 @@ from typing import Dict, List, Optional, Tuple
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
-    QCheckBox,
     QComboBox,
-    QDialog,
     QDoubleSpinBox,
-    QFormLayout,
-    QGroupBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -24,8 +20,9 @@ from PyQt5.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
-    QTabWidget,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -35,6 +32,7 @@ from .hotkeys import MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, format_hotkey
 from .langs import LANGS, RAPID_LANGS, TARGETS
 from .ocr import engine_status, list_engines
 from .translate import list_providers, provider_status
+from .widgets import FramelessDialog, IOSSwitch, SegmentedTabs
 
 # --------------------------------------------------------------------- 快捷键录制
 
@@ -107,30 +105,6 @@ class HotkeyEdit(QLineEdit):
 # --------------------------------------------------------------------- 辅助构建
 
 
-def _form(rows: List[Tuple[str, QWidget]]) -> QWidget:
-    box = QWidget()
-    lay = QFormLayout(box)
-    lay.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
-    lay.setContentsMargins(0, 0, 0, 0)
-    lay.setSpacing(8)
-    for text, widget in rows:
-        if text:
-            lab = QLabel(text)
-            lab.setProperty("role", "hint")
-            lay.addRow(lab, widget)
-        else:
-            lay.addRow(widget)
-    return box
-
-
-def _group(title: str, inner: QWidget) -> QGroupBox:
-    box = QGroupBox(title)
-    lay = QVBoxLayout(box)
-    lay.setContentsMargins(12, 8, 12, 12)
-    lay.addWidget(inner)
-    return box
-
-
 def _label(text: str, role: str = "hint") -> QLabel:
     lab = QLabel(text)
     lab.setProperty("role", role)
@@ -138,10 +112,90 @@ def _label(text: str, role: str = "hint") -> QLabel:
     return lab
 
 
+def _separator() -> QFrame:
+    line = QFrame()
+    line.setProperty("role", "separator")
+    line.setFixedHeight(1)
+    return line
+
+
+def _form(rows: List[Tuple[str, QWidget]]) -> QWidget:
+    """iOS 分组列表：左侧标签 + 右侧控件，行之间用发丝线分隔。"""
+    box = QWidget()
+    lay = QVBoxLayout(box)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.setSpacing(0)
+
+    total = len(rows)
+    for idx, (text, widget) in enumerate(rows):
+        row = QWidget()
+        is_hint = isinstance(widget, QLabel)
+
+        if isinstance(widget, (QPlainTextEdit, QTextEdit)) or not text:
+            rl = QVBoxLayout(row)
+            rl.setContentsMargins(0, 8, 0, 8)
+            rl.setSpacing(6)
+            if text:
+                lab = QLabel(text)
+                lab.setProperty("role", "row")
+                lab.setWordWrap(True)
+                rl.addWidget(lab)
+            rl.addWidget(widget)
+        else:
+            rl = QHBoxLayout(row)
+            rl.setContentsMargins(0, 5, 0, 5)
+            rl.setSpacing(14)
+            lab = QLabel(text)
+            lab.setProperty("role", "row")
+            lab.setWordWrap(True)
+            # 带自动换行的 QLabel 的 sizeHint 会偏窄，显式给一个接近文本宽度的
+            # 最小宽度，避免「失败时自动切换其 / 它免费引擎」这种难看的断行。
+            text_w = lab.fontMetrics().horizontalAdvance(text) + 10
+            lab.setMinimumWidth(min(300, max(110, text_w)))
+            lab.setMaximumWidth(340)
+            rl.addWidget(lab, 0)
+
+            if isinstance(widget, (QLineEdit, QComboBox, QLabel)):
+                rl.addWidget(widget, 1)
+            elif isinstance(widget, (QSpinBox, QDoubleSpinBox)):
+                rl.addStretch(1)
+                widget.setMaximumWidth(180)
+                rl.addWidget(widget, 0)
+            elif isinstance(widget, (IOSSwitch, QPushButton)):
+                rl.addStretch(1)
+                rl.addWidget(widget, 0, Qt.AlignVCenter)
+            else:
+                rl.addWidget(widget, 1)
+
+        lay.addWidget(row)
+        if idx < total - 1 and not is_hint:
+            lay.addWidget(_separator())
+    return box
+
+
+def _group(title: str, inner: QWidget) -> QWidget:
+    wrap = QWidget()
+    lay = QVBoxLayout(wrap)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.setSpacing(8)
+    if title:
+        lab = QLabel(title)
+        lab.setProperty("role", "section")
+        lay.addWidget(lab)
+    card = QFrame()
+    card.setObjectName("GroupCard")
+    cl = QVBoxLayout(card)
+    cl.setContentsMargins(16, 6, 16, 6)
+    cl.setSpacing(0)
+    cl.addWidget(inner)
+    lay.addWidget(card)
+    return wrap
+
+
 # --------------------------------------------------------------------- 主对话框
 
 
-class SettingsDialog(QDialog):
+class SettingsDialog(FramelessDialog):
     saved = pyqtSignal()
 
     def __init__(self, cfg, ctx=None, parent=None):
@@ -150,25 +204,29 @@ class SettingsDialog(QDialog):
         self._ctx = ctx
         self.setWindowTitle("截译 · 设置")
         self.setWindowIcon(QIcon(str(paths.icon_path())))
-        self.setMinimumSize(680, 620)
+        self.set_title("设置", "截译 · SnapTranslate")
+        self.resize(820, 720)
+        self.setMinimumSize(700, 560)
         self.setModal(False)
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(14, 14, 14, 12)
+        root = self.body_layout
+        root.setSpacing(12)
 
-        self.tabs = QTabWidget()
-        self.tabs.addTab(self._tab_hotkeys(), "快捷键")
-        self.tabs.addTab(self._tab_ocr(), "文字识别")
-        self.tabs.addTab(self._tab_translate(), "翻译引擎")
-        self.tabs.addTab(self._tab_ui(), "外观")
-        self.tabs.addTab(self._tab_system(), "系统")
+        self.tabs = SegmentedTabs()
+        self.tabs.addTab(self._scroll(self._tab_hotkeys()), "快捷键")
+        self.tabs.addTab(self._scroll(self._tab_ocr()), "文字识别")
+        self.tabs.addTab(self._scroll(self._tab_translate()), "翻译引擎")
+        self.tabs.addTab(self._scroll(self._tab_ui()), "外观")
+        self.tabs.addTab(self._scroll(self._tab_system()), "系统")
         root.addWidget(self.tabs, 1)
 
         bottom = QHBoxLayout()
-        self.lbl_footer = _label("")
+        bottom.setSpacing(8)
+        self.lbl_footer = _label("截译 v%s" % paths.APP_VERSION)
         bottom.addWidget(self.lbl_footer, 1)
 
         btn_reset = QPushButton("恢复默认")
+        btn_reset.setProperty("danger", True)
         btn_reset.clicked.connect(self._reset)
         bottom.addWidget(btn_reset)
 
@@ -179,26 +237,45 @@ class SettingsDialog(QDialog):
         btn_save = QPushButton("保存")
         btn_save.setProperty("accent", True)
         btn_save.setDefault(True)
+        btn_save.setMinimumWidth(88)
         btn_save.clicked.connect(self._save)
         bottom.addWidget(btn_save)
         root.addLayout(bottom)
 
+        self.finished.connect(self._close_offline_dialog)
         self._load()
+
+    def _close_offline_dialog(self, _result) -> None:
+        dlg = getattr(self, "_offline_dlg", None)
+        if dlg is not None:
+            self._offline_dlg = None
+            dlg.close()
+            dlg.deleteLater()
+
+    @staticmethod
+    def _scroll(page: QWidget) -> QScrollArea:
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        page.setObjectName("Page")
+        scroll.setWidget(page)
+        return scroll
 
     # ------------------------------------------------------------ 快捷键页
 
     def _tab_hotkeys(self) -> QWidget:
         page = QWidget()
         root = QVBoxLayout(page)
-        root.setContentsMargins(10, 12, 10, 10)
-        root.setSpacing(12)
+        root.setContentsMargins(0, 2, 2, 8)
+        root.setSpacing(18)
 
         hk = self._cfg.section("hotkeys")
         self.ed_capture = HotkeyEdit(hk.get("capture", ""))
         self.ed_clipboard = HotkeyEdit(hk.get("clipboard", ""))
         self.ed_repeat = HotkeyEdit(hk.get("repeat", ""))
 
-        root.addWidget(_group("全局快捷键", _form([
+        root.addWidget(_group("快捷键", _form([
             ("截图并翻译", self.ed_capture),
             ("翻译剪贴板内容", self.ed_clipboard),
             ("重译上次区域", self.ed_repeat),
@@ -209,9 +286,9 @@ class SettingsDialog(QDialog):
         self.cmb_hkmode.addItem("仅系统热键（不占用按键，最干净）", "native")
         self.cmb_hkmode.addItem("仅键盘钩子（与其它软件冲突时用）", "listener")
         root.addWidget(_group("注册方式", _form([
-            ("", self.cmb_hkmode),
+            ("模式", self.cmb_hkmode),
             ("", _label(
-                "说明：系统热键（RegisterHotKey）会把按键从其它程序那里抢过来，"
+                "系统热键（RegisterHotKey）会把按键从其它程序那里抢过来，"
                 "QQ / 微信等截图工具的默认快捷键常被占用（如 Ctrl+Alt+A）。"
                 "遇到占用时程序会自动改用键盘钩子模式，此时按键仍会传给当前窗口。")),
         ])))
@@ -226,8 +303,8 @@ class SettingsDialog(QDialog):
     def _tab_ocr(self) -> QWidget:
         page = QWidget()
         root = QVBoxLayout(page)
-        root.setContentsMargins(10, 12, 10, 10)
-        root.setSpacing(12)
+        root.setContentsMargins(0, 2, 2, 8)
+        root.setSpacing(18)
 
         self.cmb_ocr = QComboBox()
         for key, name in list_engines():
@@ -255,9 +332,9 @@ class SettingsDialog(QDialog):
         self.sp_threshold.setSuffix(" px")
         self.sp_threshold.setToolTip("图像最长边小于该值时才放大")
 
-        self.chk_enhance = QCheckBox("灰度 + 对比度增强（深色主题自动反色）")
-        self.chk_angle = QCheckBox("自动判断文字方向（处理倒置/竖排）")
-        self.chk_merge = QCheckBox("按行归并，保持阅读顺序")
+        self.chk_enhance = IOSSwitch()
+        self.chk_angle = IOSSwitch()
+        self.chk_merge = IOSSwitch()
 
         self.sp_score = QDoubleSpinBox()
         self.sp_score.setRange(0.0, 1.0)
@@ -274,12 +351,13 @@ class SettingsDialog(QDialog):
         root.addWidget(_group("图像预处理", _form([
             ("放大倍数", self.sp_upscale),
             ("放大阈值", self.sp_threshold),
-            ("", self.chk_enhance),
+            ("灰度 + 对比度增强", self.chk_enhance),
+            ("", _label("深色主题截图会自动反色后再识别。")),
         ])))
 
         root.addWidget(_group("识别选项", _form([
-            ("", self.chk_angle),
-            ("", self.chk_merge),
+            ("自动判断文字方向", self.chk_angle),
+            ("按行归并，保持阅读顺序", self.chk_merge),
             ("置信度阈值", self.sp_score),
         ])))
         root.addStretch(1)
@@ -288,20 +366,10 @@ class SettingsDialog(QDialog):
     # ------------------------------------------------------------ 翻译页
 
     def _tab_translate(self) -> QWidget:
-        outer = QWidget()
-        outer_lay = QVBoxLayout(outer)
-        outer_lay.setContentsMargins(0, 0, 0, 0)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.NoFrame)
         page = QWidget()
-        scroll.setWidget(page)
-        outer_lay.addWidget(scroll)
-
         root = QVBoxLayout(page)
-        root.setContentsMargins(10, 12, 10, 10)
-        root.setSpacing(12)
+        root.setContentsMargins(0, 2, 2, 8)
+        root.setSpacing(18)
 
         self.cmb_engine = QComboBox()
         for key, name in list_providers():
@@ -314,7 +382,7 @@ class SettingsDialog(QDialog):
         for code, name in TARGETS:
             self.cmb_dst.addItem(name, code)
 
-        self.chk_fallback = QCheckBox("失败时自动切换其它免费引擎（推荐）")
+        self.chk_fallback = IOSSwitch()
 
         self.sp_timeout = QSpinBox()
         self.sp_timeout.setRange(3, 120)
@@ -332,7 +400,7 @@ class SettingsDialog(QDialog):
             ("源语言", self.cmb_src),
             ("目标语言", self.cmb_dst),
             ("超时", self.sp_timeout),
-            ("", self.chk_fallback),
+            ("失败时自动切换其它免费引擎", self.chk_fallback),
             ("", self.btn_test),
             ("", self.lbl_test),
             ("", _label("引擎状态：\n" + "\n".join(stat_lines))),
@@ -427,7 +495,7 @@ class SettingsDialog(QDialog):
         ])))
 
         root.addStretch(1)
-        return outer
+        return page
 
     def _refresh_offline_status(self) -> None:
         try:
@@ -457,9 +525,16 @@ class SettingsDialog(QDialog):
         if getattr(self, "_offline_dlg", None) is None:
             self._offline_dlg = OfflinePackDialog(self._cfg, self)
             self._offline_dlg.changed.connect(self._refresh_offline_status)
+            self._offline_dlg.finished.connect(self._on_offline_closed)
         self._offline_dlg.show()
         self._offline_dlg.raise_()
         self._offline_dlg.activateWindow()
+
+    def _on_offline_closed(self, _result) -> None:
+        dlg = getattr(self, "_offline_dlg", None)
+        self._offline_dlg = None
+        if dlg is not None:
+            dlg.deleteLater()
 
     def _test_translate(self) -> None:
         self.btn_test.setEnabled(False)
@@ -530,40 +605,40 @@ class SettingsDialog(QDialog):
     def _tab_ui(self) -> QWidget:
         page = QWidget()
         root = QVBoxLayout(page)
-        root.setContentsMargins(10, 12, 10, 10)
-        root.setSpacing(12)
+        root.setContentsMargins(0, 2, 2, 8)
+        root.setSpacing(18)
 
         self.sp_font = QSpinBox()
         self.sp_font.setRange(9, 22)
         self.sp_font.setSuffix(" px")
 
         self.sp_width = QSpinBox()
-        self.sp_width.setRange(360, 1000)
+        self.sp_width.setRange(600, 1000)
         self.sp_width.setSingleStep(20)
         self.sp_width.setSuffix(" px")
 
         self.cmb_theme = QComboBox()
-        self.cmb_theme.addItem("深色（推荐）", "dark")
-        self.cmb_theme.addItem("浅色", "light")
+        self.cmb_theme.addItem("浅色（默认）", "light")
+        self.cmb_theme.addItem("深色", "dark")
 
-        self.chk_ontop = QCheckBox("结果窗口始终置顶")
-        self.chk_autocopy = QCheckBox("翻译完成后自动复制译文")
-        self.chk_showsrc = QCheckBox("显示原文区域")
-        self.chk_magnifier = QCheckBox("框选时显示放大镜")
-        self.chk_hint = QCheckBox("框选时显示操作提示")
+        self.chk_ontop = IOSSwitch()
+        self.chk_autocopy = IOSSwitch()
+        self.chk_showsrc = IOSSwitch()
+        self.chk_magnifier = IOSSwitch()
+        self.chk_hint = IOSSwitch()
 
         root.addWidget(_group("结果窗口", _form([
             ("字号", self.sp_font),
             ("窗口宽度", self.sp_width),
             ("主题", self.cmb_theme),
-            ("", self.chk_ontop),
-            ("", self.chk_autocopy),
-            ("", self.chk_showsrc),
+            ("始终置顶", self.chk_ontop),
+            ("翻译完成后自动复制译文", self.chk_autocopy),
+            ("显示原文区域", self.chk_showsrc),
         ])))
 
         root.addWidget(_group("框选界面", _form([
-            ("", self.chk_magnifier),
-            ("", self.chk_hint),
+            ("显示放大镜", self.chk_magnifier),
+            ("显示操作提示", self.chk_hint),
         ])))
         root.addStretch(1)
         return page
@@ -573,20 +648,21 @@ class SettingsDialog(QDialog):
     def _tab_system(self) -> QWidget:
         page = QWidget()
         root = QVBoxLayout(page)
-        root.setContentsMargins(10, 12, 10, 10)
-        root.setSpacing(12)
+        root.setContentsMargins(0, 2, 2, 8)
+        root.setSpacing(18)
 
-        self.chk_autostart = QCheckBox("开机自动启动（写入注册表 Run 项）")
-        self.chk_notify = QCheckBox("出错时显示系统通知")
+        self.chk_autostart = IOSSwitch()
+        self.chk_notify = IOSSwitch()
 
         self.sp_cache = QSpinBox()
         self.sp_cache.setRange(10, 5000)
         self.sp_cache.setSuffix(" 条")
 
         root.addWidget(_group("启动与提示", _form([
-            ("", self.chk_autostart),
-            ("", self.chk_notify),
+            ("开机自动启动", self.chk_autostart),
+            ("出错时显示系统通知", self.chk_notify),
             ("翻译缓存", self.sp_cache),
+            ("", _label("开机启动会写入注册表 HKCU\\...\\Run，不会拉起任何服务。")),
         ])))
 
         btn_sc = QPushButton("创建桌面快捷方式")
@@ -599,23 +675,27 @@ class SettingsDialog(QDialog):
         btn_clr.clicked.connect(self._clear_cache)
 
         row = QHBoxLayout()
+        row.setSpacing(8)
         for b in (btn_sc, btn_sm, btn_dir, btn_clr):
             row.addWidget(b)
         row.addStretch(1)
         wrap = QWidget()
         wrap.setLayout(row)
 
+        root.addWidget(_group("快捷方式与数据", _form([("", wrap)])))
         self.lbl_sysmsg = _label("")
-        root.addWidget(_group("快捷方式与数据", _form([
-            ("", wrap), ("", self.lbl_sysmsg),
-        ])))
+        self.lbl_sysmsg.setVisible(False)
+        root.addWidget(self.lbl_sysmsg)
 
         info = (
             "版本：%s\n程序目录：%s\n配置文件：%s\n资源目录：%s\n运行方式：%s"
             % (paths.APP_VERSION, paths.app_dir(), paths.config_path(),
                paths.resource_dir(), "打包程序" if paths.is_frozen() else "Python 源码")
         )
-        root.addWidget(_group("关于", _label(info)))
+        about = _label(info)
+        about.setObjectName("AboutInfo")
+        about.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        root.addWidget(_group("关于", about))
         root.addStretch(1)
         return page
 
@@ -624,18 +704,21 @@ class SettingsDialog(QDialog):
     def _create_shortcut(self, start_menu: bool = False) -> None:
         directory = shortcut.start_menu_dir() if start_menu else None
         ok, msg = shortcut.create_shortcut(directory)
+        self.lbl_sysmsg.setVisible(True)
         self.lbl_sysmsg.setText(("✓ " if ok else "✗ ") + msg)
 
     def _open(self, path: Path) -> None:
         try:
             os.startfile(str(path))  # noqa: S606
         except Exception as e:  # noqa: BLE001
+            self.lbl_sysmsg.setVisible(True)
             self.lbl_sysmsg.setText("打开失败：%s" % e)
 
     def _clear_cache(self) -> None:
         from .translate import clear_cache
 
         clear_cache()
+        self.lbl_sysmsg.setVisible(True)
         self.lbl_sysmsg.setText("✓ 翻译缓存已清空")
 
     # ------------------------------------------------------------ 载入 / 保存
@@ -663,9 +746,9 @@ class SettingsDialog(QDialog):
         self.sp_timeout.setValue(int(tr.get("timeout", 12) or 12))
         self.txt_glossary.setPlainText("\n".join(tr.get("glossary") or []))
 
-        self.sp_font.setValue(int(ui.get("font_size", 12) or 12))
-        self.sp_width.setValue(int(ui.get("result_width", 560) or 560))
-        self._select(self.cmb_theme, ui.get("theme", "dark"))
+        self.sp_font.setValue(int(ui.get("font_size", 13) or 13))
+        self.sp_width.setValue(int(ui.get("result_width", 620) or 620))
+        self._select(self.cmb_theme, ui.get("theme", "light"))
         self.chk_ontop.setChecked(bool(ui.get("always_on_top", True)))
         self.chk_autocopy.setChecked(bool(ui.get("auto_copy", False)))
         self.chk_showsrc.setChecked(bool(ui.get("show_original", True)))

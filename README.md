@@ -13,6 +13,14 @@ Text recognition runs **fully offline** — no network needed to read the charac
 while translation goes through several key-free providers with automatic failover.
 Install it and it just works; **no account or API key required**.
 
+**v1.2.0 — iOS-inspired interface.** Grouped cards, hairline separators, animated switches,
+a segmented tab bar and a proper light/dark palette (pick one under **Settings → Appearance**).
+
+<p align="center">
+  <img src="docs/screenshots/result-light.png" width="46%" alt="Result window — light theme">
+  <img src="docs/screenshots/settings-light.png" width="46%" alt="Settings — light theme">
+</p>
+
 ---
 
 ## 1. Quick Start
@@ -80,10 +88,13 @@ A **magnifier** follows the cursor, which makes it easy to line up on very small
 ### Result window
 
 - **Copy translation** / **Copy both** — one click to the clipboard (the button flashes “copied”)
-- **🔊 Speak** — read it aloud with the system voice
+- **Speak** — read it aloud with the system voice
 - **Re-run OCR** — re-capture the last region if the screen changed
 - **Translate again** — after changing language or engine
-- Changing the engine dropdown at the bottom **re-translates automatically**
+- Changing the engine dropdown in the status row **re-translates automatically**
+- Click the **原文** row to expand / collapse the original text; it works even when the
+  window starts collapsed
+- Long results get a scrolling text area instead of a window that runs off the screen
 - Drag the title bar to move the window; double-click it to snap back next to the capture
 - `Esc` closes, `Ctrl + C` copies the translation, `Ctrl + R` re-translates
 
@@ -238,12 +249,14 @@ snaptranslate/
 ├── snaptranslate.log                Runtime log
 ├── vendor/                          Third-party deps (generated, not committed)
 ├── models/offline/                  Offline language packs (downloaded in-app)
-├── resources/icon.ico               App icon
+├── resources/                       App icon + small UI assets (chevron, check mark)
+├── docs/screenshots/                README / release screenshots (light + dark)
 ├── app/
 │   ├── paths.py          Paths, config dir, autostart
 │   ├── config.py         Config load/save + defaults
 │   ├── langs.py          Language codes and per-engine mappings
-│   ├── theme.py          Dark / light stylesheets
+│   ├── theme.py          iOS light / dark palettes and stylesheet
+│   ├── widgets.py        Animated switch, spinner, segmented tabs, card dialog
 │   ├── screen.py         Monitor enumeration, DPI mapping, screen capture
 │   ├── overlay.py        Fullscreen selection overlay (magnifier, handles, nudging)
 │   ├── hotkeys.py        Global hotkeys (Win32 RegisterHotKey + hook fallback)
@@ -357,6 +370,15 @@ These are all real problems hit while building this, recorded so they don't get 
    brace-protection pattern must be **first** in the pattern list — placeholders themselves
    look like `{n}`, so a later position makes it mask its own output.
 
+10. **Some iOS controls have to be custom-painted.**
+    A stylesheet can colour a checkbox but cannot animate a switch, and `line-height` is
+    ignored by `QTextEdit`. `app/widgets.py` paints the switch, activity spinner and
+    segmented tab control; `ResultWindow` applies line spacing with `QTextBlockFormat`.
+    The active colours are exposed as an `ios_palette` property on `QApplication`, so custom
+    painting and the stylesheet never drift apart. Frameless dialogs use a custom title bar
+    for dragging, and their size is clamped to the available screen so the footer buttons
+    stay reachable on 1366×768 at 125%.
+
 ---
 
 ## 9. Self-test
@@ -406,8 +428,8 @@ Releasing a new version:
 
 ```bat
 git add -A
-git commit -m "feat: custom target language"
-git tag -a v1.1.0 -m "v1.1.0"
+git commit -m "feat: iOS-style interface"
+git tag -a v1.2.0 -m "v1.2.0"
 git push origin main --tags            :: tag push triggers the CI build & release
 ```
 
@@ -420,6 +442,8 @@ git push origin main --tags            :: tag push triggers the CI build & relea
 ## 11. Known limitations
 
 - **Windows only** (uses Win32 hotkeys, GDI screen capture, SAPI speech, WinRT OCR).
+- The interface is **iOS-inspired**, not a native macOS port; when SF Pro is not installed it
+  falls back to Segoe UI Variable / Microsoft YaHei UI.
 - Offline translation quality is lower than the online engines — it uses compact OPUS-MT
   models that run on CPU. Use it when privacy matters more than polish, and the online
   engines (or an LLM key) when quality matters more.

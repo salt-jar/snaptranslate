@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """翻译结果悬浮窗。
 
-无边框圆角卡片，可拖动、可置顶，显示原文与译文，提供复制 / 朗读 /
+iOS 风格的圆角卡片：可拖动、可置顶，显示原文与译文，提供复制 / 朗读 /
 换语言 / 换引擎 / 重新识别等操作。
 """
 from __future__ import annotations
@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Optional
 
 from PyQt5.QtCore import QPoint, QRect, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QGuiApplication, QIcon
+from PyQt5.QtGui import QColor, QGuiApplication, QIcon, QTextBlockFormat, QTextCursor
 from PyQt5.QtWidgets import (
     QApplication,
     QComboBox,
@@ -25,11 +25,12 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from . import paths
-from .langs import LANGS, TARGETS, display_name, label as lang_label
+from . import paths, theme
+from .langs import LANGS, TARGETS, label as lang_label
 from .translate import engine_label, list_providers
+from .widgets import ActivityIndicator, badge_label, glyph_button
 
-MARGIN = 14          # 阴影留白
+MARGIN = 18          # 阴影留白
 
 
 class _TitleBar(QWidget):
@@ -77,6 +78,7 @@ class ResultWindow(QWidget):
         self._target_text = ""
         self._busy = False
         self._token = 0
+        self._shadow = None
 
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setWindowIcon(QIcon(str(paths.icon_path())))
@@ -88,20 +90,21 @@ class ResultWindow(QWidget):
     def _build(self) -> None:
         outer = QVBoxLayout(self)
         outer.setContentsMargins(MARGIN, MARGIN, MARGIN, MARGIN)
+        outer.setSpacing(0)
 
         self.card = QFrame(self)
         self.card.setObjectName("Card")
         outer.addWidget(self.card)
 
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(28)
-        shadow.setOffset(0, 6)
-        shadow.setColor(Qt.black)
-        self.card.setGraphicsEffect(shadow)
+        self._shadow = QGraphicsDropShadowEffect(self)
+        self._shadow.setBlurRadius(42)
+        self._shadow.setOffset(0, 10)
+        self._shadow.setColor(QColor(0, 0, 0, 110))
+        self.card.setGraphicsEffect(self._shadow)
 
         root = QVBoxLayout(self.card)
-        root.setContentsMargins(14, 10, 14, 12)
-        root.setSpacing(9)
+        root.setContentsMargins(18, 12, 18, 16)
+        root.setSpacing(10)
 
         # ---- 标题栏 ----
         bar = _TitleBar(self)
@@ -109,34 +112,25 @@ class ResultWindow(QWidget):
         bl.setContentsMargins(0, 0, 0, 0)
         bl.setSpacing(8)
 
-        self.title_icon = QLabel("译")
-        self.title_icon.setFixedSize(20, 20)
-        self.title_icon.setAlignment(Qt.AlignCenter)
-        self.title_icon.setStyleSheet(
-            "background:#4c8dff;color:#fff;border-radius:6px;font-weight:700;font-size:11px;")
+        self.title_icon = badge_label("译", 24)
+        self.title_icon.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         bl.addWidget(self.title_icon)
 
         self.title = QLabel("截图翻译")
         self.title.setObjectName("TitleLabel")
+        self.title.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         bl.addWidget(self.title)
         bl.addStretch(1)
 
-        self.btn_pin = QToolButton()
-        self.btn_pin.setText("📌")
-        self.btn_pin.setCheckable(True)
-        self.btn_pin.setToolTip("窗口置顶")
+        self.btn_pin = glyph_button("\uE718", "窗口置顶", 30, checkable=True)
         self.btn_pin.clicked.connect(self._on_pin)
         bl.addWidget(self.btn_pin)
 
-        self.btn_settings = QToolButton()
-        self.btn_settings.setText("⚙")
-        self.btn_settings.setToolTip("打开设置")
+        self.btn_settings = glyph_button("\uE713", "打开设置", 30)
         self.btn_settings.clicked.connect(self.open_settings.emit)
         bl.addWidget(self.btn_settings)
 
-        self.btn_close = QToolButton()
-        self.btn_close.setText("✕")
-        self.btn_close.setToolTip("关闭 (Esc)")
+        self.btn_close = glyph_button("\uE711", "关闭 (Esc)", 30)
         self.btn_close.clicked.connect(self.hide_window)
         bl.addWidget(self.btn_close)
 
@@ -144,25 +138,31 @@ class ResultWindow(QWidget):
 
         # ---- 语言行 ----
         lang_row = QHBoxLayout()
-        lang_row.setSpacing(6)
+        lang_row.setSpacing(7)
         self.cmb_src = QComboBox()
         self.cmb_dst = QComboBox()
         for code, name in LANGS:
             self.cmb_src.addItem(name, code)
         for code, name in TARGETS:
             self.cmb_dst.addItem(name, code)
-        self.cmb_src.setMinimumWidth(120)
-        self.cmb_dst.setMinimumWidth(120)
+        self.cmb_src.setMinimumWidth(112)
+        self.cmb_dst.setMinimumWidth(112)
+        self.cmb_src.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.cmb_dst.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.cmb_src.currentIndexChanged.connect(self._on_lang_changed)
         self.cmb_dst.currentIndexChanged.connect(self._on_lang_changed)
 
         self.btn_swap = QToolButton()
+        self.btn_swap.setObjectName("SwapButton")
         self.btn_swap.setText("⇄")
+        self.btn_swap.setFixedSize(30, 30)
+        self.btn_swap.setCursor(Qt.PointingHandCursor)
         self.btn_swap.setToolTip("交换源语言与目标语言")
         self.btn_swap.clicked.connect(self._swap_langs)
 
         self.btn_retry = QPushButton("重新翻译")
         self.btn_retry.setProperty("accent", True)
+        self.btn_retry.setMinimumWidth(92)
         self.btn_retry.clicked.connect(self._emit_retranslate)
 
         lang_row.addWidget(self.cmb_src, 1)
@@ -172,7 +172,8 @@ class ResultWindow(QWidget):
         root.addLayout(lang_row)
 
         # ---- 原文 ----
-        self.lbl_source = QLabel("原文")
+        self.lbl_source = QLabel()
+        self.lbl_source.setTextFormat(Qt.RichText)
         self.lbl_source.setProperty("role", "section")
         self.lbl_source.setCursor(Qt.PointingHandCursor)
         self.lbl_source.mousePressEvent = lambda e: self._toggle_source()  # type: ignore
@@ -184,52 +185,69 @@ class ResultWindow(QWidget):
         self.view_source.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.view_source.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.view_source.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.view_source.document().setDocumentMargin(4)
         root.addWidget(self.view_source)
 
         # ---- 译文 ----
+        self.lbl_trans = QLabel("译文")
+        self.lbl_trans.setProperty("role", "section")
+        root.addWidget(self.lbl_trans)
+
         self.view_trans = QTextEdit()
         self.view_trans.setObjectName("TransView")
         self.view_trans.setReadOnly(True)
         self.view_trans.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.view_trans.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.view_trans.document().setDocumentMargin(2)
         root.addWidget(self.view_trans)
 
-        # ---- 状态 ----
+        # ---- 状态 + 引擎 ----
+        status_row = QHBoxLayout()
+        status_row.setSpacing(8)
+        self.spinner = ActivityIndicator(16)
+        self.spinner.setVisible(False)
+        status_row.addWidget(self.spinner)
+
         self.lbl_status = QLabel("")
         self.lbl_status.setObjectName("StatusLabel")
         self.lbl_status.setWordWrap(True)
-        self.lbl_status.setMinimumHeight(30)      # 预留两行，长文本不会被切掉
+        self.lbl_status.setMinimumHeight(22)
         self.lbl_status.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        root.addWidget(self.lbl_status)
+        status_row.addWidget(self.lbl_status, 1)
+
+        self.cmb_engine = QComboBox()
+        self.cmb_engine.setToolTip("切换翻译引擎后会自动重新翻译")
+        self.cmb_engine.setMinimumContentsLength(8)
+        self.cmb_engine.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.cmb_engine.setMaximumWidth(190)
+        for key, name in list_providers():
+            self.cmb_engine.addItem(name, key)
+        self.cmb_engine.currentIndexChanged.connect(self._on_engine_changed)
+        status_row.addWidget(self.cmb_engine)
+        root.addLayout(status_row)
 
         # ---- 工具栏 ----
         tools = QHBoxLayout()
-        tools.setSpacing(6)
+        tools.setSpacing(7)
         self.btn_copy_trans = QPushButton("复制译文")
         self.btn_copy_trans.setProperty("accent", True)
-        self.btn_copy_trans.clicked.connect(lambda: self._copy(self._target_text, self.btn_copy_trans))
+        self.btn_copy_trans.clicked.connect(
+            lambda: self._copy(self._target_text, self.btn_copy_trans))
 
         self.btn_copy_both = QPushButton("复制双语")
         self.btn_copy_both.clicked.connect(lambda: self._copy_both(self.btn_copy_both))
 
-        self.btn_speak = QPushButton("🔊 朗读")
+        self.btn_speak = QPushButton("朗读")
         self.btn_speak.clicked.connect(self._speak)
 
         self.btn_reocr = QPushButton("重新识别")
         self.btn_reocr.clicked.connect(self.reocr.emit)
-
-        self.cmb_engine = QComboBox()
-        self.cmb_engine.setToolTip("切换翻译引擎后会自动重新翻译")
-        for key, name in list_providers():
-            self.cmb_engine.addItem(name, key)
-        self.cmb_engine.currentIndexChanged.connect(self._on_engine_changed)
 
         tools.addWidget(self.btn_copy_trans)
         tools.addWidget(self.btn_copy_both)
         tools.addWidget(self.btn_speak)
         tools.addWidget(self.btn_reocr)
         tools.addStretch(1)
-        tools.addWidget(self.cmb_engine)
         root.addLayout(tools)
 
         self._engine_dirty = False
@@ -240,7 +258,8 @@ class ResultWindow(QWidget):
 
     def apply_config(self) -> None:
         ui = self._cfg.section("ui")
-        width = int(ui.get("result_width", 560) or 560)
+        width = int(ui.get("result_width", 620) or 620)
+        width = max(600, width)
         self.setFixedWidth(width + MARGIN * 2)
 
         src = self._cfg.get("translate.source", "auto")
@@ -258,6 +277,13 @@ class ResultWindow(QWidget):
         on_top = bool(ui.get("always_on_top", True))
         self.btn_pin.setChecked(on_top)
         self._apply_on_top(on_top)
+
+        if self._shadow is not None:
+            dark = str(self._cfg.get("ui.theme", "light")) == "dark"
+            self._shadow.setColor(QColor(0, 0, 0, 210 if dark else 100))
+            self._shadow.setBlurRadius(48 if dark else 42)
+        if self.isVisible():
+            self._fit()
 
     @staticmethod
     def _select(combo: QComboBox, value: str) -> None:
@@ -287,8 +313,14 @@ class ResultWindow(QWidget):
         show = getattr(self, "_show_source", True)
         has = bool(self._source_text.strip())
         self.view_source.setVisible(show and has)
-        self.lbl_source.setVisible(show and has)
-        self.lbl_source.setText("▾ 原文（点击折叠）" if show else "▸ 原文")
+        # 有原文时始终显示折叠标题，即使当前是折叠状态，否则用户没法在
+        # 结果窗里把原文展开（以前只能去设置里改）。
+        self.lbl_source.setVisible(has)
+        dim = theme.current_palette().get("text_dim", "#8A8A8E")
+        glyph = "\uE70D" if show else "\uE76C"   # ChevronDown / ChevronRight
+        self.lbl_source.setText(
+            '<span style="font-family:\'Segoe MDL2 Assets\'; color:%s;">%s</span>'
+            '<span style="color:%s;">&nbsp;&nbsp;原文</span>' % (dim, glyph, dim))
 
     def _toggle_source(self) -> None:
         self._show_source = not getattr(self, "_show_source", True)
@@ -305,19 +337,24 @@ class ResultWindow(QWidget):
         self._busy = True
         self._token += 1
         self.title.setText("截图翻译")
-        self.view_trans.setPlainText("")
-        self.view_source.setPlainText(self._source_text)
+        self._set_view_text(self.view_trans, "", 150)
+        self._set_view_text(self.view_source, self._source_text, 145)
+        self.spinner.setVisible(True)
+        self.spinner.start()
         self._set_status(stage, "busy")
         self.btn_retry.setEnabled(False)
+        self._fit()
         self._show_and_position()
 
     def show_result(self, ocr_result, translate_result, elapsed_note: str = "") -> None:
         self._busy = False
+        self.spinner.stop()
+        self.spinner.setVisible(False)
         self._source_text = ocr_result.text or ""
         self._target_text = translate_result.text or ""
 
-        self.view_source.setPlainText(self._source_text)
-        self.view_trans.setPlainText(self._target_text)
+        self._set_view_text(self.view_source, self._source_text, 145)
+        self._set_view_text(self.view_trans, self._target_text, 150)
         self._apply_source_visibility()
 
         # 状态栏只放最要紧的信息，完整明细放进悬浮提示，避免一行放不下被截断
@@ -362,10 +399,12 @@ class ResultWindow(QWidget):
 
     def show_error(self, stage: str, message: str) -> None:
         self._busy = False
+        self.spinner.stop()
+        self.spinner.setVisible(False)
         head = "识别失败" if stage == "ocr" else "翻译失败"
         self._set_status("%s：%s" % (head, message), "error")
         if not self.view_trans.toPlainText():
-            self.view_trans.setPlainText("")
+            self._set_view_text(self.view_trans, "", 150)
         self.btn_retry.setEnabled(True)
         self._fit()
         self._show_and_position()
@@ -395,9 +434,25 @@ class ResultWindow(QWidget):
         self.lbl_status.style().unpolish(self.lbl_status)
         self.lbl_status.style().polish(self.lbl_status)
 
+    @staticmethod
+    def _set_view_text(view: QTextEdit, text: str, line_height: int) -> None:
+        """设置纯文本，并按比例拉开行距（QSS 的 line-height 对 QTextEdit 无效）。"""
+        view.setPlainText(text)
+        if not text:
+            return
+        cursor = QTextCursor(view.document())
+        cursor.select(QTextCursor.Document)
+        fmt = QTextBlockFormat()
+        fmt.setLineHeight(line_height, QTextBlockFormat.ProportionalHeight)
+        cursor.mergeBlockFormat(fmt)
+        cursor.clearSelection()
+
     # ---------------------------------------------------------------- 布局
 
     def _fit(self) -> None:
+        # 上一次被限高后留下的最小/最大高度会卡住 adjustSize，先解除
+        self.setMinimumHeight(0)
+        self.setMaximumHeight(16777215)
         self._fit_view(self.view_source, 150)
         self._fit_view(self.view_trans, 100000)
         self.layout().activate()
@@ -410,17 +465,47 @@ class ResultWindow(QWidget):
             return
         doc = view.document()
         doc.setTextWidth(max(80, view.viewport().width()))
-        h = int(doc.size().height()) + 18
+        h = int(doc.size().height()) + 16
         view.setFixedHeight(max(40, min(h, max_height)))
 
     def _clamp_height(self) -> None:
         screen = self._screen_for_anchor()
         limit = int(screen.availableGeometry().height() * 0.86) if screen else 900
-        if self.height() > limit:
-            self.setFixedHeight(limit)
-            self.view_trans.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        else:
+
+        # 不能只看 self.height()：窗口在 show() 之前还没被布局撑开，
+        # 必须用布局的 sizeHint 判断真实需要的高度。
+        self.layout().activate()
+        need = self.layout().sizeHint().height()
+        if need <= limit:
+            self.resize(self.width(), need)
             self.view_trans.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            return
+
+        # 固定高度（标题、语言栏、按钮等）占掉一部分，剩下的分给两个文本区。
+        src_h = self.view_source.height() if self.view_source.isVisible() else 0
+        trans_h = self.view_trans.height()
+        fixed = max(0, need - src_h - trans_h)
+        avail = max(120, limit - fixed)
+
+        src_target = 0
+        if self.view_source.isVisible():
+            src_target = min(src_h, max(40, min(150, int(avail * 0.28))))
+        trans_target = min(trans_h, max(80, avail - src_target))
+        if self.view_source.isVisible():
+            src_target = min(src_h, max(40, avail - trans_target))
+
+        self.view_trans.setFixedHeight(max(80, trans_target))
+        if self.view_source.isVisible():
+            self.view_source.setFixedHeight(max(40, src_target))
+
+        self.layout().activate()
+        need = self.layout().sizeHint().height()
+        if need > limit:
+            self.setFixedHeight(limit)
+            self.resize(self.width(), limit)
+        else:
+            self.resize(self.width(), need)
+        self.view_trans.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
     def _screen_for_anchor(self):
         anchor = self._anchor
@@ -477,6 +562,7 @@ class ResultWindow(QWidget):
     def hide_window(self) -> None:
         if self._speaker is not None:
             self._speaker.stop()
+        self.spinner.stop()
         self.hide()
         self.hidden.emit()
 

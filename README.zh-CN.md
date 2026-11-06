@@ -11,6 +11,14 @@
 一个常驻系统托盘的 Windows 截图翻译工具。**完全离线识别**（不需要联网就能把图上的字认出来），
 翻译走多家免 Key 通道并带自动容错，装完即用，**不用注册任何账号、不需要 API Key**。
 
+**v1.2.0 —— iOS 风格界面。** 分组卡片、发丝分隔线、可滑动开关、胶囊分段标签，
+以及完整的浅色 / 深色主题（在「设置 → 外观」里切换）。
+
+<p align="center">
+  <img src="docs/screenshots/result-light.png" width="46%" alt="结果窗口 · 浅色">
+  <img src="docs/screenshots/settings-light.png" width="46%" alt="设置窗口 · 浅色">
+</p>
+
 ---
 
 ## 一、快速开始
@@ -75,10 +83,12 @@ python main.py                   :: 启动
 ### 结果窗口
 
 - **复制译文** / **复制双语** —— 一键进剪贴板，按钮会变成「已复制 ✓」
-- **🔊 朗读** —— 用系统语音念出来
+- **朗读** —— 用系统语音念出来
 - **重新识别** —— 屏幕内容变了，重抓上次区域
 - **重新翻译** —— 换语言或换引擎后重翻
-- 底部的引擎下拉框**换一个引擎会自动重译**
+- 状态行右侧的引擎下拉框**换一个引擎会自动重译**
+- 点一下「原文」就能展开 / 折叠原文，即使窗口当前是折叠状态也能展开
+- 长译文会自动变成可滚动的文本区，窗口不会跑出屏幕
 - 标题栏可拖动整个窗口，双击标题栏回到截图位置
 - `Esc` 关闭，`Ctrl + C` 复制译文，`Ctrl + R` 重新翻译
 
@@ -221,12 +231,14 @@ snaptranslate/
 ├── snaptranslate.log                运行日志（排查问题看这里）
 ├── vendor/                          第三方依赖（由安装脚本生成，不进版本库）
 ├── models/offline/                  离线翻译语言包（程序内下载）
-├── resources/icon.ico               程序图标
+├── resources/                       程序图标 + 小图标资源（下拉箭头、勾选）
+├── docs/screenshots/                README / Release 截图（浅色 + 深色）
 ├── app/
 │   ├── paths.py          路径、配置目录、开机自启
 │   ├── config.py         配置读写与默认值
 │   ├── langs.py          语言代码与各家引擎的映射
-│   ├── theme.py          深色 / 浅色样式表
+│   ├── theme.py          iOS 风格深色 / 浅色配色与样式表
+│   ├── widgets.py        自绘开关、加载指示器、分段标签、卡片对话框
 │   ├── screen.py         显示器枚举、DPI 换算、抓屏
 │   ├── overlay.py        全屏框选遮罩（放大镜、把手、微调）
 │   ├── hotkeys.py        全局快捷键（Win32 热键 + 键盘钩子兜底）
@@ -338,6 +350,14 @@ snaptranslate/
     另外花括号保护规则必须排在自动保护规则的**第一位**——
     占位符本身就是 `{n}` 的形状，排在后面会把自己刚生成的占位符再遮一遍。
 
+11. **iOS 风格控件有些必须自绘。**
+    样式表能改复选框的颜色，但做不出带滑动的开关；`QTextEdit` 也会忽略
+    QSS 的 `line-height`。`app/widgets.py` 负责画开关、加载指示器和分段标签，
+    `ResultWindow` 用 `QTextBlockFormat` 设置行距。当前配色通过
+    `QApplication` 的 `ios_palette` 属性暴露给自绘代码，避免和样式表脱节。
+    无边框对话框自己实现了标题栏拖动，并按屏幕可用区域收尺寸，
+    保证 1366×768 / 125% 缩放下底部按钮仍然点得到。
+
 ---
 
 ## 九、自检与测试
@@ -387,8 +407,8 @@ git clean -fd                          :: 删掉新增的未跟踪文件（小�
 
 ```bat
 git add -A
-git commit -m "feat: 支持自定义目标语言"
-git tag -a v1.1.0 -m "v1.1.0"
+git commit -m "feat: iOS 风格界面"
+git tag -a v1.2.0 -m "v1.2.0"
 git push origin main --tags            :: 推送后 CI（若已启用）会自动构建并发布 Release
 ```
 
@@ -401,6 +421,8 @@ git push origin main --tags            :: 推送后 CI（若已启用）会自�
 ## 十一、已知限制
 
 - 仅支持 Windows（依赖 Win32 热键、GDI 抓屏、SAPI 朗读、WinRT OCR）。
+- 界面是 **iOS 风格**，不是 macOS 原生移植；没有 SF Pro 时会回落到
+  Segoe UI Variable / Microsoft YaHei UI。
 - 离线翻译的质量低于在线引擎——它用的是能在 CPU 上跑的紧凑型 OPUS-MT 模型。
   在意隐私就选它，在意质量就选在线引擎或配置大模型 Key。
 - 离线语言包以英语为中心：其它语种之间需要经英语中转，会损失一点质量。

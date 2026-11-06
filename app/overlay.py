@@ -14,19 +14,30 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
-from PyQt5.QtCore import QPoint, QRect, QRectF, Qt, pyqtSignal
-from PyQt5.QtGui import QBrush, QColor, QFont, QImage, QPainter, QPen, QPixmap
+from PyQt5.QtCore import QPoint, QPointF, QRect, QRectF, Qt, pyqtSignal
+from PyQt5.QtGui import (
+    QBrush,
+    QColor,
+    QFont,
+    QImage,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+)
 from PyQt5.QtWidgets import QWidget
 
 from .screen import ScreenMapper
 
-ACCENT = QColor(76, 141, 255)
-DIM = QColor(0, 0, 0, 130)
-HANDLE_SIZE = 8
+ACCENT = QColor(10, 132, 255)
+DIM = QColor(0, 0, 0, 118)
+HANDLE_SIZE = 10
 MIN_SIZE = 6
-HANDLE_HIT = 7
-MAG_BOX = 132
-MAG_SPAN = 34          # 放大镜采样边长（逻辑像素）
+HANDLE_HIT = 8
+MAG_BOX = 136
+MAG_SPAN = 36          # 放大镜采样边长（逻辑像素）
+INK = QColor(24, 24, 26, 228)
+STROKE = QColor(255, 255, 255, 46)
 
 _CURSORS = {
     "tl": Qt.SizeFDiagCursor, "br": Qt.SizeFDiagCursor,
@@ -135,6 +146,7 @@ class CaptureOverlay(QWidget):
     def paintEvent(self, _ev) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        p.setRenderHint(QPainter.Antialiasing, True)
 
         p.drawPixmap(self.rect(), self._pixmap)          # 冻结桌面
         p.fillRect(self.rect(), DIM)                     # 压暗
@@ -145,20 +157,25 @@ class CaptureOverlay(QWidget):
             if src.width() > 0 and src.height() > 0:
                 p.drawPixmap(sel, self._pixmap, src)
 
-            p.setPen(QPen(ACCENT, 2))
             p.setBrush(Qt.NoBrush)
+            p.setPen(QPen(QColor(255, 255, 255, 70), 1))
             p.drawRect(QRectF(sel.x(), sel.y(), sel.width(), sel.height()))
+            p.setPen(QPen(ACCENT, 2))
+            p.drawRect(QRectF(sel.x() + 0.5, sel.y() + 0.5,
+                              sel.width() - 1, sel.height() - 1))
 
-            p.setPen(QPen(QColor(255, 255, 255), 1))
-            p.setBrush(QBrush(ACCENT))
             for pt in self._handle_points(sel).values():
-                p.drawRect(QRect(pt.x() - HANDLE_SIZE // 2, pt.y() - HANDLE_SIZE // 2,
-                                 HANDLE_SIZE, HANDLE_SIZE))
+                p.setPen(QPen(ACCENT, 1.6))
+                p.setBrush(QBrush(QColor(255, 255, 255)))
+                p.drawEllipse(QRectF(pt.x() - 4.5, pt.y() - 4.5, 9, 9))
             self._draw_size_badge(p, sel)
         elif self._anchor is None:
-            p.setPen(QPen(QColor(255, 255, 255, 120), 1, Qt.DashLine))
+            p.setPen(QPen(QColor(255, 255, 255, 65), 1))
             p.drawLine(0, self._hover.y(), self.width(), self._hover.y())
             p.drawLine(self._hover.x(), 0, self._hover.x(), self.height())
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(255, 255, 255, 190))
+            p.drawEllipse(QRectF(self._hover.x() - 2, self._hover.y() - 2, 4, 4))
 
         if self._show_magnifier and self._mode is None:
             self._draw_magnifier(p, self._hover)
@@ -186,43 +203,57 @@ class CaptureOverlay(QWidget):
         f.setBold(True)
         p.setFont(f)
         fm = p.fontMetrics()
-        w = fm.horizontalAdvance(text) + 16
-        h = fm.height() + 6
+        w = fm.horizontalAdvance(text) + 22
+        h = fm.height() + 9
         x = min(max(4, sel.left()), max(4, self.width() - w - 4))
-        y = sel.top() - h - 6
+        y = sel.top() - h - 7
         if y < 4:
-            y = sel.top() + 6
+            y = sel.top() + 7
         p.setPen(Qt.NoPen)
-        p.setBrush(QColor(20, 22, 26, 215))
-        p.drawRoundedRect(QRect(x, y, w, h), 5, 5)
+        p.setBrush(QColor(0, 0, 0, 55))
+        p.drawRoundedRect(QRectF(x, y + 2, w, h), h / 2.0, h / 2.0)
+        p.setBrush(INK)
+        p.drawRoundedRect(QRectF(x, y, w, h), h / 2.0, h / 2.0)
+        p.setPen(QPen(STROKE, 1))
+        p.setBrush(Qt.NoBrush)
+        p.drawRoundedRect(QRectF(x + 0.5, y + 0.5, w - 1, h - 1), h / 2.0, h / 2.0)
         p.setPen(QColor(255, 255, 255))
-        p.drawText(QRect(x, y, w, h), Qt.AlignCenter, text)
+        p.drawText(QRectF(x, y, w, h), Qt.AlignCenter, text)
 
     def _draw_hint(self, p: QPainter) -> None:
         text = ("松开鼠标完成 · Enter 确认 · 方向键微调 · 右键 / ESC 取消"
                 if self._sel.normalized().width() > MIN_SIZE
                 else "拖动鼠标框选要翻译的区域 · 右键 / ESC 取消")
         f = QFont(p.font())
-        f.setPointSize(10)
+        f.setPointSize(9)
         p.setFont(f)
         fm = p.fontMetrics()
-        w = fm.horizontalAdvance(text) + 34
+        w = fm.horizontalAdvance(text) + 40
         h = fm.height() + 16
         x = (self.width() - w) // 2
-        y = 26
+        y = 24
         p.setPen(Qt.NoPen)
-        p.setBrush(QColor(20, 22, 26, 220))
-        p.drawRoundedRect(QRect(x, y, w, h), 9, 9)
-        p.setPen(QColor(230, 233, 238))
-        p.drawText(QRect(x, y, w, h), Qt.AlignCenter, text)
+        p.setBrush(QColor(0, 0, 0, 55))
+        p.drawRoundedRect(QRectF(x, y + 2, w, h), h / 2.0, h / 2.0)
+        p.setBrush(INK)
+        p.drawRoundedRect(QRectF(x, y, w, h), h / 2.0, h / 2.0)
+        p.setPen(QPen(STROKE, 1))
+        p.setBrush(Qt.NoBrush)
+        p.drawRoundedRect(QRectF(x + 0.5, y + 0.5, w - 1, h - 1), h / 2.0, h / 2.0)
+
+        p.setPen(Qt.NoPen)
+        p.setBrush(ACCENT)
+        p.drawEllipse(QRectF(x + 14, y + h / 2.0 - 3, 6, 6))
+        p.setPen(QColor(240, 242, 246))
+        p.drawText(QRectF(x + 26, y, w - 34, h), Qt.AlignLeft | Qt.AlignVCenter, text)
 
     def _draw_magnifier(self, p: QPainter, pos: QPoint) -> None:
-        x = pos.x() + 24
-        y = pos.y() + 24
+        x = pos.x() + 26
+        y = pos.y() + 26
         if x + MAG_BOX > self.width() - 8:
-            x = pos.x() - MAG_BOX - 24
-        if y + MAG_BOX > self.height() - 30:
-            y = pos.y() - MAG_BOX - 24
+            x = pos.x() - MAG_BOX - 26
+        if y + MAG_BOX + 26 > self.height() - 8:
+            y = pos.y() - MAG_BOX - 26
         x = max(8, x)
         y = max(8, y)
 
@@ -231,25 +262,62 @@ class CaptureOverlay(QWidget):
         src = self._phys_source(
             QRect(screen_center.x() - half, screen_center.y() - half, MAG_SPAN, MAG_SPAN)
         )
-        target = QRect(x, y, MAG_BOX, MAG_BOX)
-        p.fillRect(target, QColor(16, 18, 22, 235))
-        p.drawPixmap(target, self._pixmap, src)
+        target = QRectF(x, y, MAG_BOX, MAG_BOX)
+        path = QPainterPath()
+        path.addRoundedRect(target, 14, 14)
 
-        p.setPen(QPen(QColor(255, 255, 255), 1))
-        c = target.center()
-        p.drawLine(c.x(), target.top() + 1, c.x(), target.bottom() - 1)
-        p.drawLine(target.left() + 1, c.y(), target.right() - 1, c.y())
-        p.setPen(QPen(ACCENT, 2))
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(0, 0, 0, 80))
+        p.drawRoundedRect(target.translated(0, 8), 14, 14)
+
+        p.save()
+        p.setClipPath(path)
+        p.fillRect(target, QColor(16, 18, 22))
+        p.drawPixmap(target, self._pixmap, QRectF(src))
+        p.restore()
+
         p.setBrush(Qt.NoBrush)
-        p.drawRect(target.adjusted(0, 0, -1, -1))
+        p.setPen(QPen(QColor(0, 0, 0, 90), 2.5))
+        p.drawRoundedRect(target.adjusted(-0.5, -0.5, 0.5, 0.5), 14, 14)
+        p.setPen(QPen(QColor(255, 255, 255, 225), 1.4))
+        p.drawRoundedRect(target.adjusted(0.7, 0.7, -0.7, -0.7), 13.5, 13.5)
+
+        c = target.center()
+        gap = 5.0
+        lines = [
+            (QPointF(c.x(), target.top() + 2), QPointF(c.x(), c.y() - gap)),
+            (QPointF(c.x(), c.y() + gap), QPointF(c.x(), target.bottom() - 2)),
+            (QPointF(target.left() + 2, c.y()), QPointF(c.x() - gap, c.y())),
+            (QPointF(c.x() + gap, c.y()), QPointF(target.right() - 2, c.y())),
+        ]
+        shadow_pen = QPen(QColor(0, 0, 0, 120), 3.2)
+        shadow_pen.setCapStyle(Qt.RoundCap)
+        p.setPen(shadow_pen)
+        for a, b in lines:
+            p.drawLine(a, b)
+        bright_pen = QPen(QColor(255, 255, 255, 235), 1.2)
+        bright_pen.setCapStyle(Qt.RoundCap)
+        p.setPen(bright_pen)
+        for a, b in lines:
+            p.drawLine(a, b)
+        p.setPen(QPen(ACCENT, 1.5))
+        p.setBrush(Qt.NoBrush)
+        p.drawEllipse(QRectF(c.x() - 3, c.y() - 3, 6, 6))
 
         f = QFont(p.font())
         f.setPointSize(8)
         p.setFont(f)
-        p.setPen(QColor(200, 205, 215))
-        p.drawText(QRect(x, y + MAG_BOX + 3, MAG_BOX, 16),
-                   Qt.AlignLeft | Qt.AlignVCenter,
-                   "(%d, %d)" % (screen_center.x(), screen_center.y()))
+        fm = p.fontMetrics()
+        label = "%d, %d" % (screen_center.x(), screen_center.y())
+        lw = fm.horizontalAdvance(label) + 18
+        lh = fm.height() + 8
+        lx = x + (MAG_BOX - lw) / 2.0
+        ly = y + MAG_BOX + 8
+        p.setPen(Qt.NoPen)
+        p.setBrush(INK)
+        p.drawRoundedRect(QRectF(lx, ly, lw, lh), lh / 2.0, lh / 2.0)
+        p.setPen(QColor(214, 218, 226))
+        p.drawText(QRectF(lx, ly, lw, lh), Qt.AlignCenter, label)
 
     # ---------------------------------------------------------------- 交互
 

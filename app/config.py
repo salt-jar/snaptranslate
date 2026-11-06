@@ -70,12 +70,12 @@ DEFAULTS: Dict[str, Any] = {
         "google": {"base_url": "https://translate.googleapis.com"},
     },
     "ui": {
-        "font_size": 12,
-        "result_width": 560,
+        "font_size": 13,
+        "result_width": 620,
         "always_on_top": True,
         "auto_copy": False,
         "show_original": True,
-        "theme": "dark",           # dark / light
+        "theme": "light",          # light / dark
         "overlay_hint": True,
         "magnifier": True,
     },
