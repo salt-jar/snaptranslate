@@ -8,6 +8,8 @@
 
 [English](README.md) | **简体中文**
 
+[参与贡献](CONTRIBUTING.md) · [行为准则](CODE_OF_CONDUCT.md) · [安全政策](.github/SECURITY.md) · [无障碍声明](ACCESSIBILITY.md)
+
 一个常驻系统托盘的 Windows 截图翻译工具。**完全离线识别**（不需要联网就能把图上的字认出来），
 翻译走多家免 Key 通道并带自动容错，装完即用，**不用注册任何账号、不需要 API Key**。
 
@@ -454,3 +456,14 @@ git push origin main --tags            :: 推送后 CI（若已启用）会自�
 - 免费翻译接口有频率限制，量大时建议配置大模型 Key。
 - RapidOCR 中文模型会吞掉英文词间空格（见常见问题）。
 - 程序没有代码签名，首次运行如果被 SmartScreen 拦下，选「更多信息 → 仍要运行」即可。
+
+---
+
+## 十二、社区与许可证
+
+- [参与贡献](CONTRIBUTING.md) —— 开发环境、测试、PR 流程
+- [行为准则](CODE_OF_CONDUCT.md)
+- [安全政策](.github/SECURITY.md) —— 请私密报告漏洞
+- [无障碍声明](ACCESSIBILITY.md) —— 当前支持与已知不足
+
+本项目采用 [MIT 许可证](LICENSE)。

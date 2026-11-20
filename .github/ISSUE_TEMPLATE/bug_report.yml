@@ -1,0 +1,109 @@
+name: "🐞 Bug report / 问题反馈"
+description: "Something is broken or behaves differently from the docs. / 功能异常或与文档不一致。"
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请先搜索现有 issue，避免重复。
+        Thanks for reporting — please search existing issues first.
+
+        ⚠️ 安全问题不要发在这里，请按 [SECURITY.md](https://github.com/salt-jar/snaptranslate/blob/main/.github/SECURITY.md) 私密报告。
+        Do **not** report security vulnerabilities here; use the security policy instead.
+
+  - type: input
+    id: version
+    attributes:
+      label: "Version / 版本"
+      description: "Settings → About shows the version. / 在「设置 → 关于」里可以看到。"
+      placeholder: "1.3.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: "How did you install it? / 安装方式"
+      options:
+        - "Portable ZIP / 免安装 ZIP"
+        - "From source / 从源码运行"
+        - "Other / 其它"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: windows
+    attributes:
+      label: "Windows version / Windows 版本"
+      options:
+        - "Windows 11"
+        - "Windows 10"
+        - "Windows Server / Other / 其它"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: "Component / 受影响功能"
+      options:
+        - "Screenshot & region selection / 截图与框选"
+        - "OCR / 文字识别"
+        - "Translation / 翻译"
+        - "Offline language packs / 离线语言包"
+        - "Result window or settings UI / 结果窗或设置界面"
+        - "Hotkeys / 快捷键"
+        - "Build or installation / 打包或安装"
+        - "Other / 其它"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: "Steps to reproduce / 复现步骤"
+      description: "Be specific: hotkey, selected region, language pair, engine, text. / 请写清快捷键、选区、语言、引擎和文字。"
+      placeholder: |
+        1. Press Ctrl+Alt+Z
+        2. Select a region containing ...
+        3. Choose ...
+        4. See ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: "Expected behavior / 预期行为"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: "Actual behavior / 实际行为"
+      description: "Include the exact error text or a screenshot if useful. / 有报错请贴原文，可附截图。"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: "Logs (optional) / 日志（可选）"
+      description: "`snaptranslate.log` is next to the exe (or in the project root). Remove API keys and personal paths. / 日志在 exe 旁或项目根目录，请先删除密钥和个人路径。"
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: "Checklist / 确认"
+      options:
+        - label: "I searched existing issues and this is not a duplicate. / 我已搜索现有 issue，确认不是重复。"
+          required: true
+        - label: "I removed API keys, tokens, personal data and private screenshots. / 我已移除密钥、令牌、个人数据和隐私截图。"
+          required: true
+        - label: "This is not a security vulnerability. / 这不是安全漏洞。"
+          required: true

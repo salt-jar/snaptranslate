@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "📖 Usage guide & FAQ / 使用说明与常见问题"
+    url: "https://github.com/salt-jar/snaptranslate#5-faq"
+    about: "Installation, hotkeys, OCR, translation engines, offline packs. / 安装、快捷键、OCR、翻译引擎、离线语言包。"
+  - name: "🔐 Security policy / 安全政策"
+    url: "https://github.com/salt-jar/snaptranslate/security/policy"
+    about: "Report vulnerabilities privately; do not open a public issue. / 私密报告漏洞，不要开公开 Issue。"

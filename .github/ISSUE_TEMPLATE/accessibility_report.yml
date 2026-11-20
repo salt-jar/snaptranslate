@@ -1,0 +1,107 @@
+name: "♿ Accessibility report / 无障碍反馈"
+description: "Report a barrier in keyboard use, screen readers, scaling, contrast, or motion. / 反馈键盘、屏幕阅读器、缩放、对比度或动效方面的障碍。"
+title: "[Accessibility] "
+labels: ["accessibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你帮助我们把截译做得更可用。请尽量描述实际障碍，而不只是“不好用”。
+        Thanks for helping make SnapTranslate more usable. Please describe the barrier concretely.
+
+        安全或隐私问题请走 [SECURITY.md](https://github.com/salt-jar/snaptranslate/blob/main/.github/SECURITY.md)。
+        For security or privacy issues, use the security policy instead.
+
+  - type: input
+    id: version
+    attributes:
+      label: "Version / 版本"
+      description: "Settings → About. / 设置 → 关于。"
+      placeholder: "1.3.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: windows
+    attributes:
+      label: "Windows version / Windows 版本"
+      options:
+        - "Windows 11"
+        - "Windows 10"
+        - "Other / 其它"
+    validations:
+      required: true
+
+  - type: input
+    id: scaling
+    attributes:
+      label: "Display scaling / 显示缩放"
+      description: "For example 100%, 150%, 200%, or multiple monitors with different scales. / 例如 100%、150%、200%，或多屏不同缩放。"
+      placeholder: "150%"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: "Area / 障碍所在"
+      options:
+        - "Keyboard navigation / 键盘导航"
+        - "Screen reader / 屏幕阅读器"
+        - "High contrast or colour / 高对比度或配色"
+        - "Text size or zoom / 字号或缩放"
+        - "Motion or animation / 动效"
+        - "Screenshot region selection / 截图框选"
+        - "Other / 其它"
+    validations:
+      required: true
+
+  - type: input
+    id: at
+    attributes:
+      label: "Assistive technology / 使用的辅助技术"
+      description: "NVDA, Windows Narrator, Magnifier, high-contrast mode, keyboard only, etc. / NVDA、讲述人、放大镜、高对比度、仅键盘等。"
+      placeholder: "NVDA 2025.1, Windows 11, 150%"
+    validations:
+      required: true
+
+  - type: textarea
+    id: barrier
+    attributes:
+      label: "What happens? / 具体现象"
+      description: "What did you try, what happened, and what did you expect? / 你做了什么、发生了什么、期望是什么？"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: "Steps to reproduce / 复现步骤"
+      placeholder: |
+        1. Open Settings
+        2. Press Tab until ...
+        3. Activate ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: themes
+    attributes:
+      label: "Does it happen in both themes? / 浅色和深色都会吗？"
+      options:
+        - "Yes, both / 都会"
+        - "Light only / 只有浅色"
+        - "Dark only / 只有深色"
+        - "Not tested / 未测试"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: "Checklist / 确认"
+      options:
+        - label: "I removed API keys, personal data and private screenshots. / 我已移除密钥、个人数据和隐私截图。"
+          required: true
+        - label: "This is not a security vulnerability. / 这不是安全漏洞。"
+          required: true

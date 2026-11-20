@@ -8,6 +8,8 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
+[Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Security](.github/SECURITY.md) · [Accessibility](ACCESSIBILITY.md)
+
 A Windows screenshot translation tool that lives in the system tray.
 Text recognition runs **fully offline** — no network needed to read the characters on screen —
 while translation goes through several key-free providers with automatic failover.
@@ -485,3 +487,14 @@ git push origin main --tags            :: tag push triggers the CI build & relea
 - The RapidOCR Chinese model drops spaces between English words (see FAQ).
 - The binaries are not code-signed. If SmartScreen blocks the first run, choose
   “More info → Run anyway”.
+
+---
+
+## 12. Community & license
+
+- [Contributing guide](CONTRIBUTING.md) — development setup, tests, PR process
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security policy](.github/SECURITY.md) — report vulnerabilities privately
+- [Accessibility statement](ACCESSIBILITY.md) — current support and known gaps
+
+Licensed under the [MIT License](LICENSE).

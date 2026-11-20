@@ -1,0 +1,66 @@
+name: "✨ Feature request / 功能建议"
+description: "Suggest a new feature or an improvement. / 建议新功能或改进。"
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先说明要解决的问题，而不只是实现方式；这能帮我们判断范围。
+        Describe the problem first, not only the implementation — it helps us scope the work.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: "Problem / 要解决的问题"
+      description: "What is frustrating or missing today? / 现在哪里不好用或缺失？"
+      placeholder: "When I translate ..., I have to ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: "Proposed solution / 期望的方案"
+      description: "What should happen? / 你希望它怎么工作？"
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: "Alternatives considered / 考虑过的替代方案"
+      description: "Optional. / 可选。"
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: "Area / 功能区域"
+      options:
+        - "Translation / 翻译"
+        - "OCR / 文字识别"
+        - "Offline packs / 离线语言包"
+        - "Screenshot & region selection / 截图与框选"
+        - "Result window / 结果窗"
+        - "Settings & accessibility / 设置与无障碍"
+        - "Build / packaging / 打包"
+        - "Docs / 文档"
+        - "Other / 其它"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: "Additional context / 补充信息"
+      description: "Screenshots, examples, related issues, language pairs, etc. / 截图、示例、相关 issue、语言对等。"
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: "Checklist / 确认"
+      options:
+        - label: "I searched existing issues and this is not a duplicate. / 我已搜索现有 issue，确认不是重复。"
+          required: true
+        - label: "I understand this is a small project and larger features may take time or be declined. / 我理解这是个人项目，较大功能可能需要时间，也可能不被采纳。"
+          required: true
