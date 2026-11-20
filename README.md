@@ -101,8 +101,17 @@ A **magnifier** follows the cursor, which makes it easy to line up on very small
 - Click the **原文** row to expand / collapse the original text; it works even when the
   window starts collapsed
 - Long results get a scrolling text area instead of a window that runs off the screen
+- Drag the **bottom-right grip** to change the result window width (the equivalent spin box
+  is under *Settings → Appearance*)
 - Drag the title bar to move the window; double-click it to snap back next to the capture
 - `Esc` closes, `Ctrl + C` copies the translation, `Ctrl + R` re-translates
+
+### Resizable windows
+
+- **Settings** and **Manage offline packs** have a grip in their bottom-right corner; drag
+  it to resize the window. The size is remembered and restored next time
+- The **result window** grip changes its width only; the height still follows the text, so
+  the action bar is never pushed off-screen
 
 ---
 

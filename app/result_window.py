@@ -28,7 +28,7 @@ from PyQt5.QtWidgets import (
 from . import paths, theme
 from .langs import LANGS, TARGETS, label as lang_label
 from .translate import engine_label, list_providers
-from .widgets import ActivityIndicator, LanguageCombo, badge_label, glyph_button
+from .widgets import ActivityIndicator, LanguageCombo, ResizeGrip, badge_label, glyph_button
 
 MARGIN = 18          # 阴影留白
 
@@ -256,12 +256,20 @@ class ResultWindow(QWidget):
         self.view_source.setVisible(False)
         self.lbl_source.setVisible(False)
 
+        # 右下角的宽度手柄：结果窗高度随内容自适应，只让用户调宽度
+        self._pending_width = 0
+        self.grip = ResizeGrip(self, mode="width",
+                               on_resize=self._on_width_drag,
+                               on_finish=self._on_width_finish,
+                               parent=self.card)
+        self.grip.raise_()
+
     # ---------------------------------------------------------------- 配置
 
     def apply_config(self) -> None:
         ui = self._cfg.section("ui")
         width = int(ui.get("result_width", 620) or 620)
-        width = max(600, width)
+        width = max(600, min(1000, width))
         self.setFixedWidth(width + MARGIN * 2)
 
         src = self._cfg.get("translate.source", "auto")
@@ -460,6 +468,39 @@ class ResultWindow(QWidget):
         self.layout().activate()
         self.adjustSize()
         self._clamp_height()
+        self._place_grip()
+
+    def _place_grip(self) -> None:
+        grip = getattr(self, "grip", None)
+        if grip is None:
+            return
+        grip.move(self.card.width() - grip.width() - 8,
+                  self.card.height() - grip.height() - 8)
+        grip.raise_()
+
+    def resizeEvent(self, ev) -> None:
+        super().resizeEvent(ev)
+        self._place_grip()
+
+    def _on_width_drag(self, total_width: int) -> None:
+        max_content = 1000
+        screen = self._screen_for_anchor()
+        if screen is not None:
+            # 结果窗只向右扩，右边不能超出当前屏幕
+            room = screen.availableGeometry().right() - self.x() - 4 - MARGIN * 2
+            max_content = max(600, min(max_content, room))
+        content = max(600, min(max_content, int(total_width) - MARGIN * 2))
+        self._pending_width = content
+        self.setFixedWidth(content + MARGIN * 2)
+        if self.isVisible():
+            self._fit()
+
+    def _on_width_finish(self) -> None:
+        if self._pending_width:
+            self._cfg.set("ui.result_width", self._pending_width)
+            self._pending_width = 0
+        if self.isVisible():
+            self._fit()
 
     def _fit_view(self, view: QTextEdit, max_height: int) -> None:
         if not view.isVisible():
@@ -565,6 +606,9 @@ class ResultWindow(QWidget):
         if self._speaker is not None:
             self._speaker.stop()
         self.spinner.stop()
+        if getattr(self, "_pending_width", 0):
+            self._cfg.set("ui.result_width", self._pending_width)
+            self._pending_width = 0
         self.hide()
         self.hidden.emit()
 

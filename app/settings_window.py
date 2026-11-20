@@ -32,7 +32,7 @@ from .hotkeys import MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, format_hotkey
 from .langs import LANGS, RAPID_LANGS, TARGETS
 from .ocr import engine_status, list_engines
 from .translate import list_providers, provider_status
-from .widgets import FramelessDialog, IOSSwitch, LanguageCombo, SegmentedTabs
+from .widgets import IOSSwitch, LanguageCombo, ResizableCardDialog, SegmentedTabs
 
 # --------------------------------------------------------------------- 快捷键录制
 
@@ -195,18 +195,17 @@ def _group(title: str, inner: QWidget) -> QWidget:
 # --------------------------------------------------------------------- 主对话框
 
 
-class SettingsDialog(FramelessDialog):
+class SettingsDialog(ResizableCardDialog):
     saved = pyqtSignal()
 
     def __init__(self, cfg, ctx=None, parent=None):
-        super().__init__(parent)
+        super().__init__(cfg, "ui.settings_size", default_size=(820, 720),
+                         min_size=(700, 560), parent=parent)
         self._cfg = cfg
         self._ctx = ctx
         self.setWindowTitle("截译 · 设置")
         self.setWindowIcon(QIcon(str(paths.icon_path())))
         self.set_title("设置", "截译 · SnapTranslate")
-        self.resize(820, 720)
-        self.setMinimumSize(700, 560)
         self.setModal(False)
 
         root = self.body_layout
@@ -222,7 +221,8 @@ class SettingsDialog(FramelessDialog):
 
         bottom = QHBoxLayout()
         bottom.setSpacing(8)
-        self.lbl_footer = _label("截译 v%s" % paths.APP_VERSION)
+        self.lbl_footer = _label(
+            "截译 v%s · 右下角可拖动调整窗口大小" % paths.APP_VERSION)
         bottom.addWidget(self.lbl_footer, 1)
 
         btn_reset = QPushButton("恢复默认")
@@ -640,6 +640,9 @@ class SettingsDialog(FramelessDialog):
             ("始终置顶", self.chk_ontop),
             ("翻译完成后自动复制译文", self.chk_autocopy),
             ("显示原文区域", self.chk_showsrc),
+            ("", _label(
+                "也可以直接拖动结果窗右下角调整宽度。设置窗、离线语言包窗"
+                "右下角同样有缩放手柄，拖动后会记住尺寸。")),
         ])))
 
         root.addWidget(_group("框选界面", _form([
@@ -794,6 +797,14 @@ class SettingsDialog(FramelessDialog):
                                   QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if ok == QMessageBox.Yes:
             self._cfg.reset()
+            # 恢复默认尺寸（同时受屏幕可用区域限制）
+            width, height = 820, 720
+            screen = self.screen()
+            if screen is not None:
+                area = screen.availableGeometry()
+                width = min(width, max(700, area.width() - 20))
+                height = min(height, max(560, area.height() - 20))
+            self.resize(width, height)
             self._load()
             self.saved.emit()
 

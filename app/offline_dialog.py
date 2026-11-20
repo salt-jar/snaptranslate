@@ -31,12 +31,12 @@ from PyQt5.QtWidgets import (
 )
 
 from . import offline, paths, theme
-from .widgets import FramelessDialog
+from .widgets import ResizableCardDialog
 
 _COL_PAIR, _COL_SIZE, _COL_STATE = 0, 1, 2
 
 
-class OfflinePackDialog(FramelessDialog):
+class OfflinePackDialog(ResizableCardDialog):
     changed = pyqtSignal()
 
     status_text = pyqtSignal(str)
@@ -47,13 +47,12 @@ class OfflinePackDialog(FramelessDialog):
     download_done = pyqtSignal()
 
     def __init__(self, cfg, parent=None):
-        super().__init__(parent)
+        super().__init__(cfg, "ui.offline_size", default_size=(880, 690),
+                         min_size=(720, 560), parent=parent)
         self._cfg = cfg
         self.setWindowTitle("离线语言包管理")
         self.setWindowIcon(QIcon(str(paths.icon_path())))
         self.set_title("离线语言包", "下载一次，之后翻译全程离线")
-        self.resize(880, 690)
-        self.setMinimumSize(720, 560)
 
         self._packs: List[offline.PackInfo] = []
         self._installed: Dict[Tuple[str, str], "object"] = {}

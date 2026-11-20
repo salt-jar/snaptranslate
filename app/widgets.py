@@ -441,13 +441,118 @@ class _DialogHeader(QWidget):
         ev.accept()
 
 
-class FramelessDialog(QDialog):
-    """圆角卡片对话框：透明外框 + 阴影 + 自定义标题栏。"""
+class ResizeGrip(QWidget):
+    """右下角的拖拽缩放手柄。
 
-    def __init__(self, parent=None, shadow_margin: int = 18):
+    ``mode="both"`` 同时改宽高（设置窗、语言包窗）；``mode="width"`` 只改宽度
+    （结果窗的正文宽度）。``on_resize`` 用于宽度模式回调，``on_finish`` 在松手时
+    触发，便于只在拖拽结束后写配置，避免鼠标移动时频繁落盘。
+    """
+
+    def __init__(self, window, mode: str = "both", on_resize=None,
+                 on_finish=None, parent=None, size: int = 16):
+        super().__init__(parent)
+        self._window = window
+        self._mode = mode
+        self._on_resize = on_resize
+        self._on_finish = on_finish
+        self._dragging = False
+        self._start_pos = QPoint()
+        self._start_size = QSize(0, 0)
+        self._hover = False
+        self.setFixedSize(size, size)
+        self.setCursor(Qt.SizeHorCursor if mode == "width" else Qt.SizeFDiagCursor)
+        self.setToolTip("拖动调整窗口宽度" if mode == "width" else "拖动调整窗口大小")
+        self.setAttribute(Qt.WA_Hover, True)
+
+    def _screen_area(self):
+        screen = (QApplication.screenAt(self._window.frameGeometry().center())
+                  or QApplication.primaryScreen())
+        return screen.availableGeometry() if screen is not None else None
+
+    def mousePressEvent(self, ev) -> None:
+        if ev.button() == Qt.LeftButton:
+            self._dragging = True
+            self._start_pos = ev.globalPos()
+            self._start_size = QSize(self._window.width(), self._window.height())
+            # 只有用户真的拖过手柄才记尺寸；屏幕太小被自动收窄时不要覆盖原尺寸
+            try:
+                setattr(self._window, "_user_resized", True)
+            except Exception:
+                pass
+            ev.accept()
+
+    def mouseMoveEvent(self, ev) -> None:
+        if not self._dragging:
+            return
+        delta = ev.globalPos() - self._start_pos
+        if self._mode == "width":
+            width = self._start_size.width() + delta.x()
+            if self._on_resize is not None:
+                self._on_resize(width)
+            else:
+                self._window.resize(width, self._window.height())
+            ev.accept()
+            return
+
+        area = self._screen_area()
+        if area is not None:
+            # 从右下角拖动时窗口左上角不动，上限要减去窗口当前坐标
+            max_w = max(self._window.minimumWidth(),
+                        area.right() - self._window.x() - 4)
+            max_h = max(self._window.minimumHeight(),
+                        area.bottom() - self._window.y() - 4)
+        else:
+            max_w, max_h = 10000, 10000
+        width = max(self._window.minimumWidth(),
+                    min(self._start_size.width() + delta.x(), max_w))
+        height = max(self._window.minimumHeight(),
+                     min(self._start_size.height() + delta.y(), max_h))
+        self._window.resize(width, height)
+        ev.accept()
+
+    def mouseReleaseEvent(self, ev) -> None:
+        if ev.button() == Qt.LeftButton:
+            self._dragging = False
+            if self._on_finish is not None:
+                self._on_finish()
+            ev.accept()
+
+    def enterEvent(self, ev) -> None:
+        self._hover = True
+        self.update()
+        super().enterEvent(ev)
+
+    def leaveEvent(self, ev) -> None:
+        self._hover = False
+        self.update()
+        super().leaveEvent(ev)
+
+    def paintEvent(self, _ev) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing, True)
+        col = QColor(colors().get("text_dim", "#8A8A8E"))
+        col.setAlpha(205 if self._hover else 125)
+        pen = QPen(col, 1.25)
+        pen.setCapStyle(Qt.RoundCap)
+        p.setPen(pen)
+        w, h = self.width(), self.height()
+        for d in (4, 8, 12):
+            p.drawLine(w - d, h - 3, w - 3, h - d)
+        p.end()
+
+
+class FramelessDialog(QDialog):
+    """圆角卡片对话框：透明外框 + 阴影 + 自定义标题栏。
+
+    ``resizable=True`` 时在右下角放一个自绘缩放手柄，按住即可调整窗口大小。
+    """
+
+    def __init__(self, parent=None, shadow_margin: int = 18, resizable: bool = True):
         super().__init__(parent)
         self._shadow_margin = shadow_margin
         self._positioned = False
+        self._resizable = resizable
         self.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setObjectName("CardDialog")
@@ -474,11 +579,28 @@ class FramelessDialog(QDialog):
 
         self.body = QWidget()
         self.body_layout = QVBoxLayout(self.body)
-        self.body_layout.setContentsMargins(22, 8, 22, 20)
+        # 右侧留 36px 给右下角缩放手柄，避免盖住底部按钮
+        self.body_layout.setContentsMargins(22, 8, 36 if resizable else 22, 20)
         self.body_layout.setSpacing(14)
         self.card_layout.addWidget(self.body, 1)
 
+        self.grip = None
+        if resizable:
+            self.grip = ResizeGrip(self, mode="both", parent=self.card)
+            self.grip.raise_()
+
         self._refresh_shadow()
+
+    def _place_grip(self) -> None:
+        if self.grip is None:
+            return
+        self.grip.move(self.card.width() - self.grip.width() - 8,
+                       self.card.height() - self.grip.height() - 8)
+        self.grip.raise_()
+
+    def resizeEvent(self, ev) -> None:
+        super().resizeEvent(ev)
+        self._place_grip()
 
     def set_title(self, title: str, subtitle: str = "") -> None:
         self.setWindowTitle(title)
@@ -516,4 +638,48 @@ class FramelessDialog(QDialog):
                 y = max(area.top(), min(y, area.bottom() - self.height()))
                 self.move(x, y)
         self._refresh_shadow()
+        self._place_grip()
         super().showEvent(ev)
+
+
+class ResizableCardDialog(FramelessDialog):
+    """带尺寸记忆的卡片对话框。
+
+    ``size_key`` 是配置里的点号路径（如 ``ui.settings_size``）；拖动右下角
+    调整后 350ms 落盘，关闭时再补一次，下次打开恢复上次尺寸。
+    """
+
+    def __init__(self, cfg, size_key: str, default_size=(820, 720),
+                 min_size=(700, 560), parent=None):
+        super().__init__(parent, resizable=True)
+        self._cfg = cfg
+        self._size_key = size_key
+        self._user_resized = False
+        self.setMinimumSize(*min_size)
+
+        width, height = default_size
+        try:
+            saved = cfg.get(size_key) if cfg is not None else None
+            if isinstance(saved, (list, tuple)) and len(saved) == 2:
+                width = max(int(min_size[0]), int(saved[0]))
+                height = max(int(min_size[1]), int(saved[1]))
+        except Exception:
+            width, height = default_size
+        self.resize(width, height)
+
+        self._size_timer = QTimer(self)
+        self._size_timer.setSingleShot(True)
+        self._size_timer.setInterval(350)
+        self._size_timer.timeout.connect(self._save_size)
+        self.finished.connect(self._save_size)
+
+    def resizeEvent(self, ev) -> None:
+        super().resizeEvent(ev)
+        if (self._user_resized and self.isVisible()
+                and getattr(self, "_size_timer", None) is not None):
+            self._size_timer.start()
+
+    def _save_size(self, *_args) -> None:
+        if not self._user_resized or self._cfg is None or not self._size_key:
+            return
+        self._cfg.set(self._size_key, [self.width(), self.height()])

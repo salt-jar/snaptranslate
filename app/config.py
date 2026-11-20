@@ -78,6 +78,9 @@ DEFAULTS: Dict[str, Any] = {
         "theme": "light",          # light / dark
         "overlay_hint": True,
         "magnifier": True,
+        # 对话框尺寸（含阴影留白）；用户拖动右下角后自动保存
+        "settings_size": [820, 720],
+        "offline_size": [880, 690],
     },
     "behavior": {
         "start_minimized": True,
