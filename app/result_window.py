@@ -28,7 +28,7 @@ from PyQt5.QtWidgets import (
 from . import paths, theme
 from .langs import LANGS, TARGETS, label as lang_label
 from .translate import engine_label, list_providers
-from .widgets import ActivityIndicator, badge_label, glyph_button
+from .widgets import ActivityIndicator, LanguageCombo, badge_label, glyph_button
 
 MARGIN = 18          # 阴影留白
 
@@ -139,18 +139,20 @@ class ResultWindow(QWidget):
         # ---- 语言行 ----
         lang_row = QHBoxLayout()
         lang_row.setSpacing(7)
-        self.cmb_src = QComboBox()
-        self.cmb_dst = QComboBox()
+        self.cmb_src = LanguageCombo()
+        self.cmb_dst = LanguageCombo()
         for code, name in LANGS:
             self.cmb_src.addItem(name, code)
         for code, name in TARGETS:
             self.cmb_dst.addItem(name, code)
-        self.cmb_src.setMinimumWidth(112)
-        self.cmb_dst.setMinimumWidth(112)
+        self.cmb_src.setMinimumWidth(124)
+        self.cmb_dst.setMinimumWidth(124)
         self.cmb_src.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.cmb_dst.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.cmb_src.currentIndexChanged.connect(self._on_lang_changed)
         self.cmb_dst.currentIndexChanged.connect(self._on_lang_changed)
+        self.cmb_src.setToolTip("源语言：可直接输入语言名搜索，留「自动检测」交给引擎判断")
+        self.cmb_dst.setToolTip("目标语言：可直接输入语言名搜索")
 
         self.btn_swap = QToolButton()
         self.btn_swap.setObjectName("SwapButton")

@@ -32,7 +32,7 @@ from .hotkeys import MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, format_hotkey
 from .langs import LANGS, RAPID_LANGS, TARGETS
 from .ocr import engine_status, list_engines
 from .translate import list_providers, provider_status
-from .widgets import FramelessDialog, IOSSwitch, SegmentedTabs
+from .widgets import FramelessDialog, IOSSwitch, LanguageCombo, SegmentedTabs
 
 # --------------------------------------------------------------------- 快捷键录制
 
@@ -375,12 +375,14 @@ class SettingsDialog(FramelessDialog):
         for key, name in list_providers():
             self.cmb_engine.addItem(name, key)
 
-        self.cmb_src = QComboBox()
-        self.cmb_dst = QComboBox()
+        self.cmb_src = LanguageCombo()
+        self.cmb_dst = LanguageCombo()
         for code, name in LANGS:
             self.cmb_src.addItem(name, code)
         for code, name in TARGETS:
             self.cmb_dst.addItem(name, code)
+        self.cmb_src.setToolTip("源语言：可直接输入语言名搜索，或保留「自动检测」")
+        self.cmb_dst.setToolTip("目标语言：可直接输入语言名搜索")
 
         self.chk_fallback = IOSSwitch()
 
@@ -403,6 +405,9 @@ class SettingsDialog(FramelessDialog):
             ("失败时自动切换其它免费引擎", self.chk_fallback),
             ("", self.btn_test),
             ("", self.lbl_test),
+            ("", _label(
+                "语言选择支持 100+ 种，可直接在输入框里打字搜索（中文名或语言代码）。"
+                "在线引擎的实际覆盖以返回结果为准；本地离线取决于已安装的语言包。")),
             ("", _label("引擎状态：\n" + "\n".join(stat_lines))),
         ])))
 
@@ -414,7 +419,8 @@ class SettingsDialog(FramelessDialog):
             ("", _label(
                 "把「翻译引擎」选为 <b>本地离线翻译</b> 后，识别出的文字只在本机处理，"
                 "<b>不会发送到任何服务器</b>。此模式下即使翻译失败也不会自动切换到在线引擎。"
-                "首次使用需要先下载语言包（中英双向各约 70MB）。")),
+                "首次使用需要先下载语言包（中英双向各约 70MB；Argos 索引目前约 50 种语言，"
+                "其余语种经英语中转）。")),
             ("", self.btn_offline),
             ("", self.lbl_offline),
         ])))
@@ -793,6 +799,8 @@ class SettingsDialog(FramelessDialog):
 
     def _save(self) -> None:
         cfg = self._cfg
+        self.cmb_src.commit()
+        self.cmb_dst.commit()
         mode = self.cmb_hkmode.currentData()
 
         cfg.set("hotkeys.capture", self.ed_capture.text().strip(), autosave=False)

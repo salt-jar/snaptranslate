@@ -34,6 +34,8 @@ MAX_CACHED_MODELS = 2
 #: 内部语言代码 -> argos 语言代码
 _TO_ARGOS = {
     "zh-CHS": "zh", "zh-CHT": "zt",
+    # Argos 的挪威语语言包用 nb（书面挪威语），我们内部用 no
+    "no": "nb",
     "ja": "ja", "ko": "ko", "fr": "fr", "de": "de", "es": "es", "ru": "ru",
     "pt": "pt", "it": "it", "nl": "nl", "pl": "pl", "tr": "tr", "ar": "ar",
     "th": "th", "vi": "vi", "id": "id", "ms": "ms", "hi": "hi", "uk": "uk",
@@ -214,7 +216,7 @@ def detect(text: str) -> str:
     """返回 argos 语言代码（内部实现见 :mod:`app.translate.langdetect`）。"""
     from . import langdetect
 
-    return langdetect.dominant(text or "")
+    return to_argos(langdetect.dominant(text or ""))
 
 
 # --------------------------------------------------------------------- 引擎
@@ -335,5 +337,5 @@ class LocalProvider(Provider):
             units = self._run_hop_batch(hop_from, hop_to, units)
 
         out = "\n".join(u for u in units if u)
-        detected = {"zh": "zh-CHS", "zt": "zh-CHT"}.get(real_src, real_src)
+        detected = {"zh": "zh-CHS", "zt": "zh-CHT", "nb": "no"}.get(real_src, real_src)
         return out.strip(), detected

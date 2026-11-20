@@ -13,7 +13,7 @@ import urllib.parse
 import uuid
 from typing import Optional, Tuple
 
-from ..langs import to_google, to_mymemory
+from ..langs import to_google, to_mymemory, to_yandex
 from .base import Provider, ProviderError, http_json
 
 # --------------------------------------------------------------------- 限流器
@@ -102,9 +102,8 @@ class YandexProvider(Provider):
         return True, ""
 
     def translate_chunk(self, text: str, src: str, dst: str):
-        tgt = "zh" if dst in ("zh-CHS", "zh-CHT") else dst
-        lang = tgt if src in ("", "auto") else "%s-%s" % (
-            "zh" if src in ("zh-CHS", "zh-CHT") else src, tgt)
+        tgt = to_yandex(dst)
+        lang = tgt if src in ("", "auto") else "%s-%s" % (to_yandex(src), tgt)
         sid = str(uuid.uuid4()).replace("-", "")
         url = "%s?id=%s-0-0&srv=android" % (self.URL, sid)
 
@@ -121,7 +120,7 @@ class YandexProvider(Provider):
         parts = data.get("text") or []
         if not parts:
             raise ProviderError("Yandex 返回了空的译文")
-        joiner = "" if tgt in ("zh", "ja", "ko") else " "
+        joiner = "" if tgt in ("zh", "ja", "ko", "th", "lo", "km", "my") else " "
         detected = ""
         l = str(data.get("lang") or "")
         if "-" in l:

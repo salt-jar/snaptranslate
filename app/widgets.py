@@ -30,6 +30,8 @@ from PyQt5.QtWidgets import (
     QApplication,
     QButtonGroup,
     QCheckBox,
+    QComboBox,
+    QCompleter,
     QDialog,
     QFrame,
     QGraphicsDropShadowEffect,
@@ -79,6 +81,86 @@ def badge_label(text: str = "译", size: int = 24, large: bool = False) -> QLabe
     lab.setFixedSize(size, size)
     lab.setAlignment(Qt.AlignCenter)
     return lab
+
+
+class LanguageCombo(QComboBox):
+    """可输入搜索的语言下拉框。
+
+    语言表已经 100+ 项，纯滚动很难找。这里保留下拉选择，同时允许直接
+    输入中文名 / 英文代码，QCompleter 会做包含匹配。
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setEditable(True)
+        self.setInsertPolicy(QComboBox.NoInsert)
+        self.setMaxVisibleItems(16)
+        self.setMinimumContentsLength(8)
+        self.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.setToolTip("可直接输入语言名或代码搜索")
+        comp = self.completer()
+        if comp is not None:
+            comp.setCompletionMode(QCompleter.PopupCompletion)
+            comp.setFilterMode(Qt.MatchContains)
+            comp.setCaseSensitivity(Qt.CaseInsensitive)
+        edit = self.lineEdit()
+        if edit is not None:
+            edit.setPlaceholderText("搜索语言…")
+            edit.editingFinished.connect(self._commit_text)
+
+    def commit(self) -> None:
+        """把当前输入框里的文字提交成选择（供保存 / 重译前调用）。"""
+        self._commit_text()
+
+    def _commit_text(self) -> None:
+        text = self.lineEdit().text().strip() if self.lineEdit() else ""
+        if not text:
+            self._reset_text()
+            return
+        idx = self.findText(text, Qt.MatchFixedString)
+        if idx < 0:
+            lower = text.lower()
+            for i in range(self.count()):
+                # 也允许直接输入语言代码（fr / ja / zh-CHS）
+                data = self.itemData(i)
+                if (data and str(data).lower() == lower) or \
+                        self.itemText(i).lower() == lower:
+                    idx = i
+                    break
+        if idx >= 0:
+            if idx != self.currentIndex():
+                self.setCurrentIndex(idx)
+        else:
+            self._reset_text()
+
+    def _reset_text(self) -> None:
+        idx = self.currentIndex()
+        self.setEditText(self.itemText(idx) if idx >= 0 else "")
+
+    def focusOutEvent(self, ev) -> None:
+        super().focusOutEvent(ev)
+        self._commit_text()
+
+    def keyPressEvent(self, ev) -> None:
+        if ev.key() in (Qt.Key_Return, Qt.Key_Enter):
+            self._commit_text()
+            self.hidePopup()
+            ev.accept()
+            return
+        if ev.key() == Qt.Key_Escape:
+            popup = self.completer().popup() if self.completer() else None
+            editing = bool(
+                self.lineEdit()
+                and self.lineEdit().text() != self.itemText(self.currentIndex()))
+            if (popup is not None and popup.isVisible()) or self.view().isVisible() or editing:
+                if popup is not None and popup.isVisible():
+                    popup.hide()
+                if self.view().isVisible():
+                    self.hidePopup()
+                self._reset_text()
+                ev.accept()
+                return
+        super().keyPressEvent(ev)
 
 
 # --------------------------------------------------------------------------- 开关

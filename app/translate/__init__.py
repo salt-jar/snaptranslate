@@ -14,6 +14,7 @@ import time
 from typing import Callable, Dict, List, Optional, Tuple
 
 from ..cache import LRUCache
+from ..langs import label as lang_label, normalize_code
 from .base import Provider, ProviderError, TranslateResult, chunk_text  # noqa: F401
 from .custom import CustomProvider
 from .free import GoogleFreeProvider, MyMemoryProvider, YandexProvider, YoudaoFreeProvider
@@ -83,8 +84,12 @@ def make_provider(key: str, cfg: dict) -> Provider:
 
 
 def auto_order(dst: str) -> List[str]:
-    if dst in _YOUDAO_TARGETS:
+    d = normalize_code(dst)
+    if d in _YOUDAO_TARGETS:
         return list(FALLBACK_ORDER)
+    if d == "zh-CHT":
+        # Yandex 不区分简繁，会直接给简体；优先试支持 zh-TW 的通道。
+        return ["mymemory", "google_free", "yandex", "youdao_free"]
     return [k for k in FALLBACK_ORDER if k != "youdao_free"] + ["youdao_free"]
 
 
@@ -107,7 +112,21 @@ def _normalize_for_compare(text: str) -> str:
 
 
 def _flip_target(dst: str) -> str:
-    return "en" if str(dst).startswith("zh") else "zh-CHS"
+    """反向翻译的目标语言。
+
+    * 目标中文 → 英文；
+    * 目标英文 → 中文；
+    * 其它目标语言（法语、日语……）→ 英文。
+
+    以前所有非中文目标都会翻成中文，于是「英文原文译成法语」时如果引擎
+    原样返回，用户会莫名其妙拿到中文。改成英文作为通用兜底。
+    """
+    d = normalize_code(dst)
+    if d.startswith("zh"):
+        return "en"
+    if d == "en":
+        return "zh-CHS"
+    return "en"
 
 
 def _needs_flip(source: str, result: TranslateResult, src: str, dst: str,
@@ -123,11 +142,12 @@ def _needs_flip(source: str, result: TranslateResult, src: str, dst: str,
     """
     if src not in ("", "auto"):
         return False                      # 用户明确指定了源语言，尊重其选择
-    detected = (result.detected or "").strip().lower()
+    detected = normalize_code(result.detected)
+    want = normalize_code(dst)
     unchanged = _normalize_for_compare(result.text) == _normalize_for_compare(source)
     if auto_target:
         return unchanged or detected.startswith("zh")
-    if detected and detected == str(dst).strip().lower():
+    if detected and detected.lower() == want.lower():
         return True
     return unchanged
 
@@ -174,7 +194,9 @@ def translate(text: str, src: str, dst: str, cfg: dict,
     if not text:
         return TranslateResult("", "", 0.0)
 
-    auto_target = str(dst) == "auto"
+    src = normalize_code(src) if src else "auto"
+    dst = normalize_code(dst) if dst else "auto"
+    auto_target = dst == "auto"
     if auto_target:
         dst = _auto_target(text)
 
@@ -234,6 +256,7 @@ def translate(text: str, src: str, dst: str, cfg: dict,
                 continue
             provider = cls(tcfg)
             out, detected = provider.translate(masked, src, dst, progress=progress)
+            detected = normalize_code(detected) if detected else ""
             elapsed = time.perf_counter() - t0
             out, lost = Glossary.restore(out, slots)
             if not out.strip():
@@ -296,7 +319,7 @@ def _do_flip(text: str, src: str, dst: str, tcfg: dict,
         result.note = ("原文已是中文，已自动译为英文"
                        if flipped == "en" else "已自动译为中文")
     else:
-        result.note = "原文已是目标语言，已自动反向译为「%s」" % flipped
+        result.note = "原文已是目标语言，已自动反向译为「%s」" % lang_label(flipped)
     return result
 
 

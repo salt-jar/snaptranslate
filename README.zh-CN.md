@@ -14,6 +14,10 @@
 **v1.2.0 —— iOS 风格界面。** 分组卡片、发丝分隔线、可滑动开关、胶囊分段标签，
 以及完整的浅色 / 深色主题（在「设置 → 外观」里切换）。
 
+**v1.3.0 —— 支持 100+ 种语言。** 语言下拉框现在有 **107 种语言**，并且可以搜索：
+点开下拉框直接输入中文名或语言代码（`fr`、`ja`、`zh-CHS`）。
+在线引擎覆盖其中大部分；本地离线翻译取决于你安装了哪些语言包。
+
 <p align="center">
   <img src="docs/screenshots/result-light.png" width="46%" alt="结果窗口 · 浅色">
   <img src="docs/screenshots/settings-light.png" width="46%" alt="设置窗口 · 浅色">
@@ -86,6 +90,7 @@ python main.py                   :: 启动
 - **朗读** —— 用系统语音念出来
 - **重新识别** —— 屏幕内容变了，重抓上次区域
 - **重新翻译** —— 换语言或换引擎后重翻
+- 语言下拉框**可以直接输入搜索**，不用在长列表里滚动
 - 状态行右侧的引擎下拉框**换一个引擎会自动重译**
 - 点一下「原文」就能展开 / 折叠原文，即使窗口当前是折叠状态也能展开
 - 长译文会自动变成可滚动的文本区，窗口不会跑出屏幕
@@ -95,6 +100,11 @@ python main.py                   :: 启动
 ---
 
 ## 三、翻译引擎
+
+**语言覆盖。** 下拉框里共 107 种语言。「智能选择」会按顺序尝试免 Key 引擎，
+Yandex / MyMemory 覆盖其中大部分，Google 能连通时补上其余语种。
+本地离线翻译以英语为中心：Argos 索引共 100 个语言包，覆盖约 50 种语言，
+其它语种经英语中转。
 
 ### 完全离线：文本不出本机（隐私优先）
 
@@ -107,6 +117,9 @@ python main.py                   :: 启动
 
 > **这个模式永远不会回退到在线引擎。** 本地模型出错就报错，绝不会偷偷把文本发到服务器。
 > 这是刻意设计的：用户选本地翻译通常就是为了隐私，静默兜底等于把这份保障悄悄取消了。
+>
+> 本地模式的源语言自动检测是按文字系统判断的（拉丁文字一律先当作英语）。
+> 翻译法语 / 德语 / 西班牙语等拉丁语系原文时，手动指定源语言效果最好。
 
 也可以用命令行批量下载：
 
@@ -126,9 +139,9 @@ python tools\offline_pack.py --download zh-en en-zh :: 中英双向
 | 引擎 | 语言覆盖 | 实测 |
 | --- | --- | --- |
 | **有道翻译（免 Key）** | 中 ⇄ 英 | ✅ 质量最好，但请求过快会被短暂限流（程序内置节流 + 自动重试） |
-| **Yandex 翻译（免 Key）** | 20+ 语种，长文本友好 | ✅ 稳定，支持中日韩法德俄西等 |
-| **MyMemory（免 Key）** | 多语种 | ✅ 兜底用，单次上限 500 字符、质量一般 |
-| Google 翻译（免 Key） | 多语种 | ⚠️ 国内需要代理，代码已实现但直连超时 |
+| **Yandex 翻译（免 Key）** | 100+ 语种，长文本友好 | ✅ 稳定，除中日韩法德俄西外，还实测了斯瓦希里语、宿务语、乌尔都语、波斯语等 |
+| **MyMemory（免 Key）** | 100+ 语种 | ✅ 兜底用，单次上限 500 字符、质量一般 |
+| Google 翻译（免 Key） | 100+ 语种 | ⚠️ 国内需要代理，代码已实现但直连超时 |
 
 默认的**「智能选择」**会在一个引擎失败时自动换下一个，所以正常情况下你不需要关心用哪个。
 
@@ -263,7 +276,8 @@ snaptranslate/
     ├── make_icon.py      生成图标
     ├── offline_pack.py   离线语言包命令行工具
     ├── selftest.py       环境 / OCR / 翻译 / 离线自检
-    ├── test_translation.py 翻译链路回归测试（62 项断言）
+    ├── test_translation.py 翻译链路回归测试
+    ├── test_languages.py 语言表 / 代码映射 / 多目标语种路径测试
     ├── diagnose_translation.py 翻译质量诊断（按失效模式分组的用例）
     ├── gui_test.py       端到端冒烟测试
     ├── overlay_test.py   坐标换算与框选交互测试
@@ -366,6 +380,7 @@ snaptranslate/
 自检.bat                                   :: 完整自检（依赖 / OCR / 翻译）
 python tools\selftest.py --ocr             :: 只测识别
 python tools\selftest.py --translate       :: 只测翻译
+python tools\test_languages.py             :: 语言覆盖 / 目标语言边界用例
 python tools\overlay_test.py               :: 坐标换算与框选交互
 python tools\ui_check.py                   :: 界面几何自检（可加 --shot-dir 导出截图）
 python tools\gui_test.py                   :: 端到端：识别→翻译→显示
@@ -408,7 +423,7 @@ git clean -fd                          :: 删掉新增的未跟踪文件（小�
 ```bat
 git add -A
 git commit -m "feat: iOS 风格界面"
-git tag -a v1.2.0 -m "v1.2.0"
+git tag -a v1.3.0 -m "v1.3.0"
 git push origin main --tags            :: 推送后 CI（若已启用）会自动构建并发布 Release
 ```
 
@@ -423,6 +438,8 @@ git push origin main --tags            :: 推送后 CI（若已启用）会自�
 - 仅支持 Windows（依赖 Win32 热键、GDI 抓屏、SAPI 朗读、WinRT OCR）。
 - 界面是 **iOS 风格**，不是 macOS 原生移植；没有 SF Pro 时会回落到
   Segoe UI Variable / Microsoft YaHei UI。
+- 语言覆盖取决于引擎：少数冷门语言对可能在所有免费通道上都失败，
+  Google 在国内需要代理。
 - 离线翻译的质量低于在线引擎——它用的是能在 CPU 上跑的紧凑型 OPUS-MT 模型。
   在意隐私就选它，在意质量就选在线引擎或配置大模型 Key。
 - 离线语言包以英语为中心：其它语种之间需要经英语中转，会损失一点质量。

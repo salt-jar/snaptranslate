@@ -8,7 +8,7 @@ from pathlib import Path
 
 APP_NAME = "截译"
 APP_ID = "SnapTranslate"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 
 # --------------------------------------------------------------------------- 运行环境
 

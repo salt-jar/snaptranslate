@@ -16,6 +16,11 @@ Install it and it just works; **no account or API key required**.
 **v1.2.0 — iOS-inspired interface.** Grouped cards, hairline separators, animated switches,
 a segmented tab bar and a proper light/dark palette (pick one under **Settings → Appearance**).
 
+**v1.3.0 — 100+ languages.** The language pickers now list **107 languages** and are
+searchable: click a picker and type a Chinese name or an ISO code (`fr`, `ja`, `zh-CHS`).
+Online engines cover most of the list; local offline translation depends on the language
+packs you have installed.
+
 <p align="center">
   <img src="docs/screenshots/result-light.png" width="46%" alt="Result window — light theme">
   <img src="docs/screenshots/settings-light.png" width="46%" alt="Settings — light theme">
@@ -91,6 +96,7 @@ A **magnifier** follows the cursor, which makes it easy to line up on very small
 - **Speak** — read it aloud with the system voice
 - **Re-run OCR** — re-capture the last region if the screen changed
 - **Translate again** — after changing language or engine
+- Language pickers are **searchable** — type a language name or code instead of scrolling
 - Changing the engine dropdown in the status row **re-translates automatically**
 - Click the **原文** row to expand / collapse the original text; it works even when the
   window starts collapsed
@@ -101,6 +107,12 @@ A **magnifier** follows the cursor, which makes it easy to line up on very small
 ---
 
 ## 3. Translation engines
+
+**Language coverage.** The pickers list 107 languages. “Smart” mode tries the key-free
+engines in order until one succeeds; Yandex and MyMemory cover a broad part of the list,
+and Google fills in the rest when reachable. Local offline translation is English-centric:
+the Argos index has 100 packs covering about 50 languages, with other pairs pivoted
+through English.
 
 ### Fully offline — nothing leaves your machine
 
@@ -115,6 +127,10 @@ Chinese ⇄ English is about 70 MB per direction; after that, translation is ent
 > **This mode never falls back to an online engine.** If the local model fails, you get an
 > error — your text is not silently sent to a server. That is deliberate: choosing local
 > translation is usually a privacy decision, and a silent fallback would quietly cancel it.
+>
+> Local source detection is script-based (Latin text is assumed to be English). For
+> French / German / Spanish and other Latin-script sources, pick the source language
+> explicitly for the best local result.
 
 Download packs from the command line too:
 
@@ -132,9 +148,9 @@ The download index is fetched through multiple mirrors (jsDelivr CDN first) beca
 | Engine | Coverage | Status |
 | --- | --- | --- |
 | **Youdao (key-free)** | Chinese ⇄ English | ✅ Best quality for that pair; rate-limited if you hammer it (built-in throttling + retry) |
-| **Yandex (key-free)** | 20+ languages, long text | ✅ Stable — CN/EN/JP/KR/FR/DE/RU/ES and more |
-| **MyMemory (key-free)** | Many languages | ✅ Last-resort fallback; 500-character limit per request, mediocre quality |
-| Google (key-free) | Many languages | ⚠️ Needs a proxy in mainland China; implemented, but direct connections time out |
+| **Yandex (key-free)** | 100+ languages, long text | ✅ Stable — CN/EN/JP/KR/FR/DE/RU/ES, plus Swahili, Cebuano, Urdu, Persian and more |
+| **MyMemory (key-free)** | 100+ languages | ✅ Last-resort fallback; 500-character limit per request, mediocre quality |
+| Google (key-free) | 100+ languages | ⚠️ Needs a proxy in mainland China; implemented, but direct connections time out |
 
 The default **“Smart”** mode automatically falls back to the next engine if one fails,
 so normally you never have to care which one is being used.
@@ -281,7 +297,8 @@ snaptranslate/
     ├── make_icon.py      Icon generator
     ├── offline_pack.py   CLI for offline language packs
     ├── selftest.py       Env / OCR / translation / offline self-test
-    ├── test_translation.py Translation-pipeline regression suite (62 assertions)
+    ├── test_translation.py Translation-pipeline regression suite
+    ├── test_languages.py Language registry / mapping / multi-target path tests
     ├── diagnose_translation.py Translation-quality diagnosis by failure mode
     ├── gui_test.py       End-to-end smoke test
     ├── overlay_test.py   Coordinate mapping and selection tests
@@ -387,6 +404,7 @@ These are all real problems hit while building this, recorded so they don't get 
 自检.bat                                   :: full check (deps / OCR / translation)
 python tools\selftest.py --ocr             :: OCR only
 python tools\selftest.py --translate       :: translation only
+python tools\test_languages.py             :: language coverage / target-language edge cases
 python tools\overlay_test.py               :: coordinate mapping and selection interaction
 python tools\ui_check.py                   :: UI geometry (add --shot-dir to export screenshots)
 python tools\gui_test.py                   :: end-to-end: OCR → translate → display
@@ -429,7 +447,7 @@ Releasing a new version:
 ```bat
 git add -A
 git commit -m "feat: iOS-style interface"
-git tag -a v1.2.0 -m "v1.2.0"
+git tag -a v1.3.0 -m "v1.3.0"
 git push origin main --tags            :: tag push triggers the CI build & release
 ```
 
@@ -444,6 +462,8 @@ git push origin main --tags            :: tag push triggers the CI build & relea
 - **Windows only** (uses Win32 hotkeys, GDI screen capture, SAPI speech, WinRT OCR).
 - The interface is **iOS-inspired**, not a native macOS port; when SF Pro is not installed it
   falls back to Segoe UI Variable / Microsoft YaHei UI.
+- Language coverage depends on the engine; some rare language pairs may fail on every free
+  endpoint, and Google needs a proxy in mainland China.
 - Offline translation quality is lower than the online engines — it uses compact OPUS-MT
   models that run on CPU. Use it when privacy matters more than polish, and the online
   engines (or an LLM key) when quality matters more.

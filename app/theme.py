@@ -409,6 +409,20 @@ QTextEdit[readOnly="true"] {{
     background: {bg_alt};
 }}
 
+QComboBox QLineEdit {{
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    color: {text};
+    selection-background-color: {sel};
+    selection-color: {text};
+}}
+QComboBox QLineEdit:focus {{
+    background: transparent;
+    border: none;
+}}
+
 QComboBox::drop-down {{
     border: none;
     width: 24px;
@@ -608,6 +622,21 @@ QTableWidget::item:selected {{
 QTableCornerButton::section {{
     background: transparent;
     border: none;
+}}
+
+QListView {{
+    background: {bg_alt};
+    color: {text};
+    border: 1px solid {separator};
+    border-radius: 10px;
+    padding: 4px;
+    outline: none;
+    selection-background-color: {sel};
+    selection-color: {text};
+}}
+QListView::item {{
+    padding: 5px 8px;
+    border-radius: 6px;
 }}
 
 /* ---------------------------------------------------------------- 进度 */
